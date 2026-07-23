@@ -5,6 +5,7 @@ postgres_config.json
 
 # Python
 my_env/
+.venv/
 __pycache__/
 *.pyc
 
