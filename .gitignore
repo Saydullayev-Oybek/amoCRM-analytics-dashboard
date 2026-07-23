@@ -1,0 +1,16 @@
+# Secrets — never commit
+auth.json
+postgres_config.json
+.dlt/secrets.toml
+
+# Python
+my_env/
+__pycache__/
+*.pyc
+
+# Local data dumps
+*_test.json
+leads_test.json
+
+# dlt working dirs
+.dlt/pipelines/
