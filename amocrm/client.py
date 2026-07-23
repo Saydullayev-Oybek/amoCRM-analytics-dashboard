@@ -60,17 +60,20 @@ class ThrottledSession(requests.Session):
         resp = None
         for attempt in range(self._max_retries + 1):
             self._limiter.wait()
-            resp = super().send(request, **kwargs)
+            # dlt RESTClient.paginate javobga raise_for_status hook o'rnatadi,
+            # shu sabab 429 super().send() ichida HTTPError ko'tarishi mumkin.
+            # Uni ushlaymiz va 429 bo'lsa qayta urinamiz.
+            try:
+                resp = super().send(request, **kwargs)
+            except requests.exceptions.HTTPError as exc:
+                resp = exc.response
+                if self._should_retry(resp, attempt):
+                    self._sleep_for_retry(resp, attempt)
+                    continue
+                raise
 
-            if resp.status_code == 429 and attempt < self._max_retries:
-                retry_after = _parse_retry_after(resp)
-                log.warning(
-                    "429 Too Many Requests — %.1fs kutilyapti (urinish %d/%d)",
-                    retry_after,
-                    attempt + 1,
-                    self._max_retries,
-                )
-                time.sleep(retry_after)
+            if self._should_retry(resp, attempt):
+                self._sleep_for_retry(resp, attempt)
                 continue
             break
 
@@ -78,6 +81,23 @@ class ThrottledSession(requests.Session):
             # Bo'sh sahifa: paginator keyingi havolani topmaydi va to'xtaydi.
             resp._content = b"{}"
         return resp
+
+    def _should_retry(self, resp, attempt: int) -> bool:
+        return (
+            resp is not None
+            and resp.status_code == 429
+            and attempt < self._max_retries
+        )
+
+    def _sleep_for_retry(self, resp, attempt: int) -> None:
+        retry_after = _parse_retry_after(resp)
+        log.warning(
+            "429 Too Many Requests — %.1fs kutilyapti (urinish %d/%d)",
+            retry_after,
+            attempt + 1,
+            self._max_retries,
+        )
+        time.sleep(retry_after)
 
 
 def _parse_retry_after(resp: requests.Response) -> float:
