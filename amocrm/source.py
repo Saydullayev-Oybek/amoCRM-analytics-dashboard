@@ -7,106 +7,127 @@ qo'lda hech qanday watermark fayl/jadval yozilmaydi.
 
 from __future__ import annotations
 
-import logging
+import logging                                            # log xabarlari uchun
 
-import dlt
-from dlt.sources.helpers.rest_client import RESTClient
+import dlt                                                # ETL freymvork (source/resource/incremental)
+from dlt.sources.helpers.rest_client import RESTClient    # tur belgilash uchun (client argumenti)
 
-from .client import paginate
+from .client import paginate                              # sahifalab yozuv oqizadigan yordamchi
 
-log = logging.getLogger("amocrm")
+log = logging.getLogger("amocrm")                         # "amocrm" loggeri
 
 # Ro'yxat endpointlari uchun standart sahifa hajmi (maksimum 250).
 PAGE_LIMIT = 250
 # events endpointi uchun maksimum 100.
 EVENTS_PAGE_LIMIT = 100
 
+# Airflow DAG parse paytida (client'siz, I/O'siz) har table uchun task yaratish
+# uchun resource nomlari ro'yxati. Bu amocrm_source() qaytaradigan resource'lar
+# tartibiga mos bo'lishi kerak. `events` hozircha o'chirilgan (izohda).
+RESOURCE_NAMES = [
+    "account",
+    "users",
+    "pipelines",
+    "leads_custom_fields",
+    "contacts_custom_fields",
+    "companies_custom_fields",
+    "leads",
+    "contacts",
+    "companies",
+    "tasks",
+    # "events",
+]
 
-@dlt.source(name="amocrm")
+
+@dlt.source(name="amocrm")                                # bu funksiya — "amocrm" nomli dlt manbasi
 def amocrm_source(client: RESTClient):
     """Barcha entity'larni bitta dlt source sifatida qaytaradi."""
 
     # --- 1. account: bir marta, to'liq (bitta obyekt) ---
-    @dlt.resource(name="account", write_disposition="replace", primary_key="id")
+    @dlt.resource(name="account", write_disposition="replace", primary_key="id")  # har run'da to'liq almashtiriladi
     def account():
-        resp = client.get(
+        resp = client.get(                                        # /account'ga bitta GET so'rov
             "/api/v4/account",
-            params={"with": "is_api_filter_enabled"},
+            params={"with": "is_api_filter_enabled"},             # Alpha-filtr holatini ham so'raymiz
         )
-        resp.raise_for_status()
-        yield resp.json()
+        resp.raise_for_status()                                   # xato (4xx/5xx) bo'lsa to'xtatamiz
+        yield resp.json()                                         # bitta account obyektini qaytaramiz
 
     # --- 2. users: to'liq (incremental yo'q) ---
-    @dlt.resource(name="users", write_disposition="merge", primary_key="id")
+    @dlt.resource(name="users", write_disposition="merge", primary_key="id")  # id bo'yicha upsert
     def users():
-        yield from paginate(
+        yield from paginate(                                      # barcha foydalanuvchilarni sahifalab olamiz
             client,
             "/api/v4/users",
-            params={"limit": PAGE_LIMIT, "with": "role,group"},
-            data_selector="_embedded.users",
+            params={"limit": PAGE_LIMIT, "with": "role,group"},   # rol va guruh ma'lumoti bilan
+            data_selector="_embedded.users",                      # yozuvlar JSON'ning shu yerida
         )
 
     # --- 3. pipelines: voronka va bosqichlar (to'liq, pagination yo'q) ---
-    @dlt.resource(name="pipelines", write_disposition="merge", primary_key="id")
+    @dlt.resource(name="pipelines", write_disposition="merge", primary_key="id")  # id bo'yicha upsert
     def pipelines():
-        resp = client.get("/api/v4/leads/pipelines")
-        resp.raise_for_status()
-        yield from resp.json().get("_embedded", {}).get("pipelines", [])
+        resp = client.get("/api/v4/leads/pipelines")             # voronkalar ro'yxatini olamiz
+        resp.raise_for_status()                                   # xatoni tekshiramiz
+        yield from resp.json().get("_embedded", {}).get("pipelines", [])  # har bir voronkani qaytaramiz
 
     # --- 4-6. custom field ta'riflari (to'liq) ---
     def _custom_fields(name: str, entity_path: str):
-        @dlt.resource(name=name, write_disposition="merge", primary_key="id")
+        # Umumiy yasovchi: leads/contacts/companies uchun custom_fields resource'ini yaratadi.
+        @dlt.resource(name=name, write_disposition="merge", primary_key="id")  # id bo'yicha upsert
         def resource():
-            yield from paginate(
+            yield from paginate(                                  # custom field ta'riflarini sahifalab olamiz
                 client,
-                f"/api/v4/{entity_path}/custom_fields",
+                f"/api/v4/{entity_path}/custom_fields",           # masalan /api/v4/leads/custom_fields
                 params={"limit": PAGE_LIMIT},
-                data_selector="_embedded.custom_fields",
+                data_selector="_embedded.custom_fields",          # ta'riflar shu yerda
             )
 
-        return resource
+        return resource                                          # tayyor resource funksiyasini qaytaramiz
 
-    leads_custom_fields = _custom_fields("leads_custom_fields", "leads")
-    contacts_custom_fields = _custom_fields("contacts_custom_fields", "contacts")
-    companies_custom_fields = _custom_fields("companies_custom_fields", "companies")
+    leads_custom_fields = _custom_fields("leads_custom_fields", "leads")          # lead maydonlari
+    contacts_custom_fields = _custom_fields("contacts_custom_fields", "contacts") # kontakt maydonlari
+    companies_custom_fields = _custom_fields("companies_custom_fields", "companies")  # kompaniya maydonlari
 
     # --- 7-10. INCREMENTAL (updated_at bo'yicha, merge/upsert) ---
     def _incremental_entity(name: str, path: str, data_key: str):
-        @dlt.resource(name=name, write_disposition="merge", primary_key="id")
+        # Umumiy yasovchi: updated_at bo'yicha inkremental resource yaratadi.
+        @dlt.resource(name=name, write_disposition="merge", primary_key="id")  # id bo'yicha upsert
         def resource(
-            updated_at=dlt.sources.incremental("updated_at", initial_value=None)
+            updated_at=dlt.sources.incremental("updated_at", initial_value=None)  # watermark: eng katta updated_at
         ):
             params = {
-                "limit": PAGE_LIMIT,
-                "order[updated_at]": "asc",
+                "limit": PAGE_LIMIT,                              # sahifa hajmi
+                "order[updated_at]": "asc",                       # eskidan yangiga tartiblab olamiz
             }
             # Birinchi ishga tushishda last_value=None → filtrsiz to'liq backfill.
             # Keyingi ishlarda dlt oldingi run'ning eng katta updated_at'ini beradi.
-            if updated_at.last_value is not None:
-                params["filter[updated_at][from]"] = int(updated_at.last_value)
-            yield from paginate(client, path, params, f"_embedded.{data_key}")
+            # DIQQAT: to'liq server-tomon samara amoCRM Alpha-filtri yoqilganda ishlaydi;
+            # ungacha ham dlt mijoz-tomonda takroriy yozuvlarni cheklaydi.
+            if updated_at.last_value is not None:                 # oldingi run bo'lgan bo'lsa
+                params["filter[updated_at][from]"] = int(updated_at.last_value)  # faqat undan keyingilarini so'raymiz
+            yield from paginate(client, path, params, f"_embedded.{data_key}")   # yozuvlarni oqizamiz
 
-        return resource
+        return resource                                          # tayyor resource'ni qaytaramiz
 
-    leads = _incremental_entity("leads", "/api/v4/leads", "leads")
-    contacts = _incremental_entity("contacts", "/api/v4/contacts", "contacts")
-    companies = _incremental_entity("companies", "/api/v4/companies", "companies")
-    tasks = _incremental_entity("tasks", "/api/v4/tasks", "tasks")
+    leads = _incremental_entity("leads", "/api/v4/leads", "leads")            # bitimlar (lidlar)
+    contacts = _incremental_entity("contacts", "/api/v4/contacts", "contacts")  # kontaktlar
+    companies = _incremental_entity("companies", "/api/v4/companies", "companies")  # kompaniyalar
+    tasks = _incremental_entity("tasks", "/api/v4/tasks", "tasks")            # vazifalar
 
     # --- 11. events: INCREMENTAL (created_at), APPEND-ONLY ---
-    @dlt.resource(name="events", write_disposition="append", primary_key="id")
+    @dlt.resource(name="events", write_disposition="append", primary_key="id")  # faqat qo'shiladi (yangilanmaydi)
     def events(
-        created_at=dlt.sources.incremental("created_at", initial_value=None)
+        created_at=dlt.sources.incremental("created_at", initial_value=None)   # watermark: eng katta created_at
     ):
         params = {
-            "limit": EVENTS_PAGE_LIMIT,
-            "order[created_at]": "asc",
+            "limit": EVENTS_PAGE_LIMIT,                           # events uchun sahifa hajmi (100)
+            "order[created_at]": "asc",                           # eskidan yangiga tartiblaymiz
         }
-        if created_at.last_value is not None:
-            params["filter[created_at][from]"] = int(created_at.last_value)
-        yield from paginate(client, "/api/v4/events", params, "_embedded.events")
+        if created_at.last_value is not None:                     # oldingi run bo'lgan bo'lsa
+            params["filter[created_at][from]"] = int(created_at.last_value)  # faqat yangi hodisalarni so'raymiz
+        yield from paginate(client, "/api/v4/events", params, "_embedded.events")  # hodisalarni oqizamiz
 
-    return (
+    return (                                                     # dlt'ga yuklanadigan barcha resource'lar ro'yxati
         account,
         users,
         pipelines,
@@ -117,5 +138,5 @@ def amocrm_source(client: RESTClient):
         contacts,
         companies,
         tasks,
-        events,
+        # events,                                                # hozircha o'chirilgan (ro'yxatdan chiqarilgan)
     )

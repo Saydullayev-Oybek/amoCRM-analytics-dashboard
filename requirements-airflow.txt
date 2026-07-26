@@ -1,0 +1,5 @@
+# Airflow image ichiga qo'shimcha o'rnatiladigan paketlar.
+# apache-airflow'ning o'zi bazaviy image'dan keladi — bu yerga yozilmaydi.
+dlt[postgres]>=1.29
+requests>=2.31
+psycopg2-binary>=2.9

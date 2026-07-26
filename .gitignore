@@ -15,3 +15,8 @@ leads_test.json
 
 # dlt working dirs
 .dlt/pipelines/
+
+# Airflow / Docker (lokal ish papkalari)
+logs/
+dlt_data/
+.env

@@ -115,12 +115,59 @@ sozlamalarida yoqilishi kerak (`is_api_filter_enabled`). Agar o'chiq bo'lsa, fil
 **jimgina e'tiborsiz** qoldiriladi va har run to'liq skaner bo'ladi. Pipeline ishga
 tushganda buni tekshiradi va o'chiq bo'lsa konsolga ogohlantirish chiqaradi.
 
+## Airflow bilan avtomatlashtirish (Docker)
+
+Pipeline'ni har 15 daqiqada avtomatik ishga tushirish va **har bir jadvalni alohida
+kuzatish** uchun Airflow (Docker Compose) sozlangan.
+
+### Ishga tushirish
+
+```bash
+docker compose up -d --build     # image quriladi + Airflow ishga tushadi
+```
+
+- UI: **http://localhost:8080** (login: `admin` / parol: `admin`).
+- `amocrm_etl` DAG'ni topib, uni **yoqing** (toggle) — keyin har 15 daqiqada
+  avtomatik ishlaydi. Qo'lda sinash uchun "Trigger DAG" tugmasini bosing.
+- To'xtatish: `docker compose down`.
+
+### Har jadval — alohida task
+
+DAG'da har bir entity **alohida task** (`load_leads`, `load_contacts`, ...). Grid
+view'da qaysi jadval muvaffaqiyatli (yashil), qaysi biri xato (qizil) ekani ko'rinadi;
+har task'ning o'z log'i va traceback'i bor. Task'lar **ketma-ket** ishlaydi (dlt state
+xavfsizligi va rate-limit uchun).
+
+### Kuzatuv jadvali — `etl_run_log`
+
+Har run natijasi PostgreSQL'dagi `etl_run_log` jadvaliga ham yoziladi:
+
+```sql
+SELECT * FROM <schema>.etl_run_log ORDER BY logged_at DESC;
+```
+
+Ustunlar: `dag_run_id`, `table_name`, `status` (success/failed), `rows_loaded`,
+`load_id`, `error`, `logged_at`. Qaysi jadval nima xato qaytarganini shu yerdan
+ko'rish mumkin.
+
+### ⚠️ Docker eslatmalari
+
+- Compose ichidagi `postgres` — bu **Airflow'ning o'z** metadata bazasi. Sizning
+  analitika bazangiz (`postgres_config.json`) bundan **alohida**.
+- Agar analitika bazasi host mashinada ishlab tursa, `postgres_config.json`'da
+  `host` sifatida `localhost` emas, **`host.docker.internal`** yozing.
+
 ## Loyiha tuzilishi
 
 ```
 amocrm/
-  config.py    # auth.json + postgres_config.json o'qish/tekshirish
-  client.py    # RESTClient + rate-limit (≤7 req/s) + 429 retry + pagination
-  source.py    # 11 ta dlt resource
-pipeline.py    # ishga tushirish nuqtasi
+  config.py    # auth.json + postgres_config.json o'qish/tekshirish (AMOCRM_CONFIG_DIR env)
+  client.py    # RESTClient + rate-limit (≤6 req/s) + 429/ulanish retry + pagination
+  source.py    # 11 ta dlt resource + RESOURCE_NAMES ro'yxati
+  runner.py    # yadro: pipeline/source yasash, run_table(), etl_run_log audit
+pipeline.py    # qo'lda ishga tushirish nuqtasi (butun source bir yo'la)
+dags/
+  amocrm_etl_dag.py    # Airflow DAG: har jadval alohida task, */15 jadval
+docker/Dockerfile      # Airflow image + dlt[postgres] + requests
+docker-compose.yaml    # Airflow (LocalExecutor) stack
 ```

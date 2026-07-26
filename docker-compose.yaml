@@ -1,0 +1,86 @@
+# amoCRM ETL uchun Airflow (LocalExecutor) — soddalashtirilgan compose.
+# Servislar: postgres (Airflow metadata bazasi), airflow-init (bir martalik
+# migratsiya + admin user), webserver, scheduler.
+#
+# DIQQAT: bu yerdagi "postgres" — Airflow'ning O'Z metadata bazasi. Sizning
+# analitika bazangiz (postgres_config.json) bundan ALOHIDA. Agar analitika bazasi
+# host mashinada bo'lsa, postgres_config.json'da host sifatida "host.docker.internal"
+# ishlating (localhost emas).
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    # Bizning ETL uchun kerakli env:
+    PYTHONPATH: /opt/airflow/project          # amocrm paketini import qilish uchun
+    AMOCRM_CONFIG_DIR: /opt/airflow/config    # auth.json / postgres_config.json shu yerda
+    DLT_DATA_DIR: /opt/airflow/dlt_data       # dlt state/loglar shu yerda saqlanadi
+  volumes:
+    - ./dags:/opt/airflow/dags                                  # DAG fayllar
+    - ./amocrm:/opt/airflow/project/amocrm                      # amocrm paketi (PYTHONPATH orqali)
+    - ./auth.json:/opt/airflow/config/auth.json:ro             # amoCRM token (faqat o'qish)
+    - ./postgres_config.json:/opt/airflow/config/postgres_config.json:ro  # analitika baza sozlamasi
+    - ./logs:/opt/airflow/logs                                  # Airflow loglar
+    - ./dlt_data:/opt/airflow/dlt_data                          # dlt working dir
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+    restart: always
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    # DB migratsiyasini bajaradi va admin foydalanuvchini yaratadi (bir marta).
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username admin --password admin \
+          --firstname admin --lastname admin \
+          --role Admin --email admin@example.com || true
+    restart: on-failure
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"                                            # UI: http://localhost:8080
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      retries: 5
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  airflow-db:
