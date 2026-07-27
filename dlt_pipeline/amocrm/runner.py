@@ -8,10 +8,14 @@ DAG parse paytida emas.
 
 from __future__ import annotations
 
+import hashlib                          # destination "barmoq izini" hisoblash uchun
 import logging                          # log xabarlari uchun
+import shutil                           # eski state papkasini o'chirish uchun
+from pathlib import Path                # fayl yo'llari
 
 import dlt                              # ETL freymvork
 import psycopg2                         # PostgreSQL bilan bevosita ishlash (audit jadvali) — dlt[postgres] bilan keladi
+from dlt.common.pipeline import get_dlt_pipelines_dir  # dlt state papkasini topish (DLT_DATA_DIR'ni hisobga oladi)
 
 from .client import build_client        # sozlangan RESTClient yasovchi
 from .config import load_auth, load_postgres_config  # config o'qish
@@ -21,13 +25,48 @@ log = logging.getLogger("amocrm")       # "amocrm" loggeri
 
 # Audit jadval nomi (schema/dataset_name ichida yaratiladi).
 AUDIT_TABLE = "etl_run_log"
+# Pipeline nomi — state shu nom bilan saqlanadi.
+PIPELINE_NAME = "amocrm"
+
+
+def _destination_fingerprint(pg: dict) -> str:
+    """Destination'ni (host+baza+user+schema) bir xilligini bildiruvchi qisqa hash."""
+    raw = f"{pg['credentials']}|{pg['dataset_name']}"           # credentials host/baza/user'ni o'z ichiga oladi
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _reset_state_if_destination_changed(pg: dict) -> None:
+    """Agar oldingi run'dagidan BOSHQA bazaga yozilayotgan bo'lsa — eski local
+    dlt state'ni tozalaydi.
+
+    Sabab: dlt qaysi jadvallar yaratilganini local state'da eslaydi. Boshqa
+    (bo'sh) bazaga o'tilганда eski state "jadval bor" deb o'ylab, uni yaratmasдан
+    merge qiladi → "relation ... does not exist". Barmoq izi o'zgarsa, state'ni
+    tozalab, toza backfill qilamiz.
+    """
+    base = Path(get_dlt_pipelines_dir())                       # <DLT_DATA_DIR>/pipelines
+    work_dir = base / PIPELINE_NAME                            # shu pipeline'ning state papkasi
+    marker = base / f".{PIPELINE_NAME}_destination"           # oxirgi destination barmoq izi shu yerda
+    fingerprint = _destination_fingerprint(pg)                 # hozirgi destination
+    previous = marker.read_text().strip() if marker.exists() else None  # oldingi destination
+
+    if previous is not None and previous != fingerprint and work_dir.exists():
+        # Boshqa bazaga o'tildi — eski state endi noto'g'ri, o'chiramiz.
+        shutil.rmtree(work_dir)
+        log.warning(
+            "Boshqa destination aniqlandi — eski dlt state tozalandi, toza backfill qilinadi."
+        )
+
+    base.mkdir(parents=True, exist_ok=True)                   # papka bo'lmasa yaratamiz
+    marker.write_text(fingerprint)                            # hozirgi destination'ni eslab qo'yamiz
 
 
 def build_pipeline() -> dlt.Pipeline:
     """PostgreSQL'ga yozadigan dlt pipeline yaratadi (state shu pipeline nomida)."""
     pg = load_postgres_config()                                  # ulanish + dataset_name
+    _reset_state_if_destination_changed(pg)                      # yangi bazaga o'tilgan bo'lsa state'ni tozalaymiz
     return dlt.pipeline(
-        pipeline_name="amocrm",                                 # state shu nom bilan saqlanadi/tiklanadi
+        pipeline_name=PIPELINE_NAME,                            # state shu nom bilan saqlanadi/tiklanadi
         destination=dlt.destinations.postgres(credentials=pg["credentials"]),  # nishon baza
         dataset_name=pg["dataset_name"],                        # schema
         progress="log",                                         # jarayonni logga chiqaradi

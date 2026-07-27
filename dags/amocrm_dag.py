@@ -35,7 +35,7 @@ with DAG(
     dag_id="amocrm_etl",                                 # UI'da ko'rinadigan DAG nomi
     description="amoCRM → PostgreSQL incremental ETL (dlt), har table alohida task",
     schedule="*/15 * * * *",                             # har 15 daqiqada
-    start_date=pendulum.datetime(2026, 7, 26, tz="UTC"),  # boshlanish sanasi
+    start_date=pendulum.datetime(2026, 7, 26, tz="UTC"), # boshlanish sanasi
     catchup=False,                                       # o'tmish uchun run'lar yaratilmaydi
     max_active_runs=1,                                   # run'lar ustma-ust tushmaydi
     default_args=default_args,
@@ -50,5 +50,5 @@ with DAG(
             op_kwargs={"table_name": name},              # qaysi table'ni yuklash
         )
         if previous_task is not None:                    # oldingi task bo'lsa
-            previous_task >> task                         # ketma-ket bog'laymiz (t1 >> t2)
+            previous_task >> task                        # ketma-ket bog'laymiz (t1 >> t2)
         previous_task = task                             # keyingi iteratsiya uchun eslab qolamiz

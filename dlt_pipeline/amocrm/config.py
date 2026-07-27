@@ -11,12 +11,37 @@ import os                                 # muhit o'zgaruvchilarini (env) o'qish
 from pathlib import Path                 # fayl yo'llari bilan qulay ishlash uchun
 from urllib.parse import quote_plus      # parol/login'dagi maxsus belgilarni URL uchun xavfsizlashtirish
 
-# Config fayllar qayerdan o'qilishi. Lokalda joriy papka ("."), Airflow/Docker'da
-# esa AMOCRM_CONFIG_DIR env orqali mount qilingan papka ko'rsatiladi.
-CONFIG_DIR = Path(os.environ.get("AMOCRM_CONFIG_DIR", "."))
+# Config fayllar nomlari (aniq joyi ish vaqtida topiladi — _resolve_config_path).
+AUTH_FILENAME = "auth.json"
+POSTGRES_FILENAME = "postgres_config.json"
 
-AUTH_FILE = CONFIG_DIR / "auth.json"                    # avtorizatsiya fayli (standart yo'l)
-POSTGRES_FILE = CONFIG_DIR / "postgres_config.json"     # PostgreSQL sozlama fayli (standart yo'l)
+
+def _resolve_config_path(filename: str) -> Path:
+    """Config faylni topadi — qaysi papkadan ishga tushirilishidan qat'i nazar.
+
+    Qidiruv tartibi:
+      1. AMOCRM_CONFIG_DIR env (Airflow/Docker uchun) — eng yuqori ustuvorlik.
+      2. Joriy ish papkasidan yuqoriga qarab (CWD → ota-papkalar → /).
+      3. Modul (config.py) joyidan yuqoriga qarab — repo ildizini topish uchun.
+    Hech qayerdan topilmasa, oddiy nom qaytariladi (xato xabari aniq bo'lsin).
+    """
+    env_dir = os.environ.get("AMOCRM_CONFIG_DIR")           # 1) env ustuvor
+    if env_dir:
+        return Path(env_dir) / filename
+
+    cwd = Path.cwd()                                        # 2) joriy papkadan yuqoriga
+    for base in [cwd, *cwd.parents]:
+        candidate = base / filename
+        if candidate.exists():
+            return candidate
+
+    here = Path(__file__).resolve()                         # 3) modul joyidan yuqoriga (repo ildizi)
+    for base in here.parents:
+        candidate = base / filename
+        if candidate.exists():
+            return candidate
+
+    return Path(filename)                                  # 4) topilmadi — nom bilan qaytaramiz
 
 
 class ConfigError(Exception):
@@ -46,12 +71,14 @@ def _read_json(path: Path, human_name: str) -> dict:
     return data                                         # tekshirilgan dict'ni qaytaramiz
 
 
-def load_auth(path: Path = AUTH_FILE) -> dict:
+def load_auth(path: Path | None = None) -> dict:
     """Subdomain va access_token'ni o'qiydi.
 
     Spec formati: {"subdomain": ..., "access_token": ...}.
     Eski format (token / sub-domen) ham qabul qilinadi (moslashuvchanlik uchun).
     """
+    if path is None:                                            # yo'l berilmasa — avtomatik topamiz
+        path = _resolve_config_path(AUTH_FILENAME)
     data = _read_json(path, "auth.json")                        # auth.json'ni dict sifatida o'qiymiz
     subdomain = data.get("subdomain") or data.get("sub-domen")  # yangi yoki eski kalitdan subdomen
     token = data.get("access_token") or data.get("token")       # yangi yoki eski kalitdan token
@@ -79,11 +106,13 @@ def base_url(subdomain: str) -> str:
     return f"https://{subdomain}.amocrm.ru"                     # masalan https://mycompany.amocrm.ru
 
 
-def load_postgres_config(path: Path = POSTGRES_FILE) -> dict:
+def load_postgres_config(path: Path | None = None) -> dict:
     """PostgreSQL ulanish ma'lumotlarini o'qiydi va dlt uchun tayyorlaydi.
 
     Qaytaradi: {"credentials": <connection string>, "dataset_name": <schema>}.
     """
+    if path is None:                                            # yo'l berilmasa — avtomatik topamiz
+        path = _resolve_config_path(POSTGRES_FILENAME)
     data = _read_json(path, "postgres_config.json")             # postgres_config.json'ni o'qiymiz
 
     required = ["host", "port", "database", "username", "password"]   # majburiy kalitlar

@@ -1,11 +1,13 @@
 # amoCRM ETL uchun Airflow (LocalExecutor) — soddalashtirilgan compose.
-# Servislar: postgres (Airflow metadata bazasi), airflow-init (bir martalik
-# migratsiya + admin user), webserver, scheduler.
+# Servislar:
+#   postgres      — Airflow'ning O'Z metadata bazasi (ichki, tegilmaydi)
+#   analytics-db  — SIZNING analitika bazangiz (amoCRM ma'lumoti shu yerga yig'iladi)
+#   airflow-init / webserver / scheduler
 #
-# DIQQAT: bu yerdagi "postgres" — Airflow'ning O'Z metadata bazasi. Sizning
-# analitika bazangiz (postgres_config.json) bundan ALOHIDA. Agar analitika bazasi
-# host mashinada bo'lsa, postgres_config.json'da host sifatida "host.docker.internal"
-# ishlating (localhost emas).
+# DIQQAT — host nomlanishi:
+#   * Airflow konteyneri ICHIDAN analytics-db'ga ulanish → host = "analytics-db", port 5432
+#     (postgres_config.json shunga sozlangan).
+#   * HOST kompyuterdan (Power BI, DBeaver, psql) ulanish → host = "localhost", port 5433.
 
 x-airflow-common: &airflow-common
   build:
@@ -30,6 +32,8 @@ x-airflow-common: &airflow-common
   depends_on:
     postgres:
       condition: service_healthy
+    analytics-db:
+      condition: service_healthy
 
 services:
   postgres:
@@ -42,6 +46,23 @@ services:
       - airflow-db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+    restart: always
+
+  # SIZNING analitika bazangiz — amoCRM ma'lumoti shu yerga yig'iladi.
+  analytics-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres          # postgres_config.json'dagi username bilan bir xil
+      POSTGRES_PASSWORD: "admin"      # postgres_config.json'dagi password bilan bir xil
+      POSTGRES_DB: amocrm           # postgres_config.json'dagi database bilan bir xil
+    ports:
+      - "5433:5432"                 # host'dan: localhost:5433 (Power BI, DBeaver, psql)
+    volumes:
+      - analytics-db-data:/var/lib/postgresql/data   # ma'lumot shu volume'da saqlanadi
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "amocrm"]
       interval: 10s
       retries: 5
     restart: always
@@ -84,3 +105,4 @@ services:
 
 volumes:
   airflow-db:
+  analytics-db-data:      # SIZNING analitika bazangiz ma'lumoti

@@ -35,7 +35,7 @@ RESOURCE_NAMES = [
     "contacts",
     "companies",
     "tasks",
-    # "events",
+    "events",
 ]
 
 
@@ -138,5 +138,5 @@ def amocrm_source(client: RESTClient):
         contacts,
         companies,
         tasks,
-        # events,                                                # hozircha o'chirilgan (ro'yxatdan chiqarilgan)
+        events,                                             
     )

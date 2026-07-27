@@ -1,48 +1,44 @@
-# amoCRM → PostgreSQL ETL (dlt)
+# amoCRM → PostgreSQL ETL
 
-amoCRM (Kommo) CRM Platform API v4'dan ma'lumotni **incremental** tarzda tortib,
-**PostgreSQL**'ga yuklaydigan Python pipeline. [dlt](https://dlthub.com) kutubxonasi
-ustiga qurilgan. Ma'lumot **xom** (to'liq JSON) holda yuklanadi — custom fieldlarni
-pivot qilish yoki boshqa transformatsiya keyingi (dbt) bosqichga qoldiriladi.
+amoCRM (Kommo) dan ma'lumotni olib, **PostgreSQL** bazasiga yuklaydigan pipeline.
+[dlt](https://dlthub.com) kutubxonasi ustiga qurilgan.
 
-## Talablar
+**Nima qiladi:**
+- amoCRM'dagi leadlar, kontaktlar, kompaniyalar, vazifalar va boshqalarni tortadi.
+- Ularni PostgreSQL'ga **xom (JSON) holda** yuklaydi (tozalash/transformatsiya keyin — dbt bosqichida).
+- Birinchi marta hammasini, keyin esa **faqat o'zgarganini** yuklaydi.
 
-- Python **3.12 yoki 3.13** (dlt hozircha 3.14'ni qo'llab-quvvatlamaydi)
+---
+
+## 1. Talablar
+
+- Python **3.12 yoki 3.13** (3.14 hali qo'llab-quvvatlanmaydi)
 - Ishlaydigan PostgreSQL baza
-- amoCRM long-lived access token
+- amoCRM access token
 
-## O'rnatish
+## 2. O'rnatish
 
 ```bash
-# 3.13 virtual muhit (uv bilan)
+# virtual muhit yaratish va paketlarni o'rnatish
 uv venv --python 3.13 .venv
 uv pip install --python .venv/bin/python -r dlt_pipeline/requirements.txt
-
-# yoki standart pip bilan
-python3.13 -m venv .venv
-./.venv/bin/pip install -r dlt_pipeline/requirements.txt
 ```
 
-## Sozlash
+## 3. Sozlash
 
-### 1. `auth.json`
+Ikkita config fayl yaratasiz (ikkalasi ham `.gitignore`'da — Git'ga tushmaydi).
 
-`auth.json.example`'dan nusxa oling va to'ldiring:
+**`auth.json`** — amoCRM ulanishi (`auth.json.example`dan nusxa oling):
 
 ```json
 {
   "subdomain": "sizning-subdomen",
-  "access_token": "sizning-long-lived-token"
+  "access_token": "sizning-tokeningiz"
 }
 ```
+> `subdomain` — `https://SUBDOMEN.amocrm.ru` dagi qism.
 
-- `subdomain` — `https://<subdomain>.amocrm.ru` dagi qism.
-- `access_token` — amoCRM'da yaratilgan uzoq muddatli (long-lived) token.
-- Bu fayl `.gitignore`'da — Git'ga hech qachon yuklanmaydi.
-
-### 2. `postgres_config.json`
-
-`postgres_config.example.json`'dan nusxa oling:
+**`postgres_config.json`** — baza ulanishi (`postgres_config.example.json`dan nusxa oling):
 
 ```json
 {
@@ -50,131 +46,142 @@ python3.13 -m venv .venv
   "port": 5432,
   "database": "amocrm",
   "username": "postgres",
-  "password": "sizning-parolingiz",
+  "password": "parolingiz",
   "schema": "amocrm"
 }
 ```
+> `schema` — jadvallar yaratiladigan schema nomi.
 
-`schema` — PostgreSQL'da jadvallar yaratiladigan schema nomi (dlt `dataset_name`).
-Bu fayl ham `.gitignore`'da.
-
-## Ishga tushirish
+## 4. Ishga tushirish
 
 ```bash
-# repo ildizidan turib ishga tushiring (auth.json / postgres_config.json shu yerda)
-./.venv/bin/python dlt_pipeline/amocrm_pipeline.py
+./.venv/bin/python dlt_pipeline/pipeline.py
 ```
 
-- **Birinchi run** — to'liq backfill (barcha ma'lumot tortiladi).
-- **Keyingi run'lar** — faqat yangi/o'zgargan yozuvlar (dlt state orqali).
+- **Birinchi run** — hamma ma'lumot tortiladi (to'liq).
+- **Keyingi run'lar** — faqat yangi yoki o'zgargan yozuvlar.
 
-Har run oxirida har bir jadval uchun nechta yozuv yuklangani konsolga chiqadi.
+Har run oxirida qaysi jadvalga nechta yozuv yuklangani ko'rinadi.
 
-## Entity'lar
+---
 
-| Jadval | Endpoint | Rejim | write_disposition |
-|---|---|---|---|
-| `account` | `/api/v4/account` | to'liq (1 obyekt) | replace |
-| `users` | `/api/v4/users` | to'liq | merge |
-| `pipelines` | `/api/v4/leads/pipelines` | to'liq | merge |
-| `leads_custom_fields` | `/api/v4/leads/custom_fields` | to'liq | merge |
-| `contacts_custom_fields` | `/api/v4/contacts/custom_fields` | to'liq | merge |
-| `companies_custom_fields` | `/api/v4/companies/custom_fields` | to'liq | merge |
-| `leads` | `/api/v4/leads` | **incremental** (`updated_at`) | merge |
-| `contacts` | `/api/v4/contacts` | **incremental** (`updated_at`) | merge |
-| `companies` | `/api/v4/companies` | **incremental** (`updated_at`) | merge |
-| `tasks` | `/api/v4/tasks` | **incremental** (`updated_at`) | merge |
-| `events` | `/api/v4/events` | **incremental** (`created_at`) | **append** |
+## Qaysi jadvallar yuklanadi
 
-`pipelines` ichidagi bosqichlar (`_embedded.statuses`) va boshqa ichma-ich massivlar
-(`custom_fields_values`, teglar, `enums`) dlt tomonidan avtomatik **bola jadvallarga**
-(masalan `pipelines__statuses`) ajratiladi. dlt qo'shimcha texnik jadvallar ham
-yaratadi: `_dlt_loads`, `_dlt_pipeline_state`, `_dlt_version`.
+| Jadval | Nima | Yuklash usuli |
+|---|---|---|
+| `leads` | Bitimlar (lidlar) | faqat o'zgargani |
+| `contacts` | Kontaktlar | faqat o'zgargani |
+| `companies` | Kompaniyalar | faqat o'zgargani |
+| `tasks` | Vazifalar | faqat o'zgargani |
+| `events` | Hodisalar (log) | faqat yangisi qo'shiladi |
+| `account` | Hisob ma'lumoti | har run to'liq |
+| `users` | Foydalanuvchilar | har run to'liq |
+| `pipelines` | Voronka va bosqichlar | har run to'liq |
+| `*_custom_fields` | Maxsus maydon ta'riflari | har run to'liq |
 
-## Incremental qanday ishlaydi
+> **"Faqat o'zgargani"** — katta jadvallar (leads va h.k.) har safar butunlay
+> emas, faqat oxirgi run'dan keyin o'zgargan yozuvlar yuklanadi. Buni dlt o'zi
+> avtomatik boshqaradi (qo'lda hech narsa qilish shart emas).
 
-- Incremental entity'lar `order[updated_at]=asc` (events uchun `order[created_at]=asc`)
-  bilan so'raladi, shunda sahifalar bir tekis o'sadi.
-- dlt cursor maydonining eng katta qiymatini o'z **state**'ida saqlaydi (qo'lda
-  watermark fayl/jadval yozilmaydi).
-- Keyingi run'da dlt shu qiymatni `filter[updated_at][from]` (events: `filter[created_at][from]`)
-  parametriga qo'yadi, natijada faqat yangi/o'zgarganlar tortiladi.
-- `events` — **append-only**: hech qachon UPSERT qilinmaydi, faqat qo'shiladi.
+> **"Har run to'liq"** — kichik jadvallar har safar to'liq qayta yuklanadi
+> (ular kichik, shuning uchun tez).
 
-### Incrementalni tekshirish
+Katta jadvallar `id` bo'yicha **yangilanadi** (dublikat bo'lmaydi). dlt qo'shimcha
+ichki jadvallar ham yaratadi (`_dlt_*`) — bularga tegmang.
 
-1. `amocrm_pipeline.py`'ni ishga tushiring — to'liq backfill bo'ladi.
-2. amoCRM'da bitta lead'ni o'zgartiring (yoki yangi qo'shing).
-3. `amocrm_pipeline.py`'ni qayta ishga tushiring — konsol yakunida faqat o'sha bitta
-   (yoki bir nechta) o'zgargan yozuv ko'rsatilishi kerak.
-4. dlt state'ni ko'rish: `./.venv/bin/dlt pipeline amocrm info`.
+---
 
-## ⚠️ Muhim eslatma — Alpha filtr
+## Avtomatlashtirish (Airflow + Docker)
 
-amoCRM'da `filter[updated_at]` filtri **Alpha** bosqichida bo'lib, hisob
-sozlamalarida yoqilishi kerak (`is_api_filter_enabled`). Agar o'chiq bo'lsa, filtr
-**jimgina e'tiborsiz** qoldiriladi va har run to'liq skaner bo'ladi. Pipeline ishga
-tushganda buni tekshiradi va o'chiq bo'lsa konsolga ogohlantirish chiqaradi.
-
-## Airflow bilan avtomatlashtirish (Docker)
-
-Pipeline'ni har 15 daqiqada avtomatik ishga tushirish va **har bir jadvalni alohida
-kuzatish** uchun Airflow (Docker Compose) sozlangan.
-
-### Ishga tushirish
+Pipeline'ni **har 15 daqiqada avtomatik** ishlatish va har bir jadvalni
+alohida kuzatish uchun Airflow sozlangan.
 
 ```bash
-docker compose up -d --build     # image quriladi + Airflow ishga tushadi
+docker compose up -d --build     # ishga tushirish
+docker compose down              # to'xtatish
 ```
 
-- UI: **http://localhost:8080** (login: `admin` / parol: `admin`).
-- `amocrm_etl` DAG'ni topib, uni **yoqing** (toggle) — keyin har 15 daqiqada
-  avtomatik ishlaydi. Qo'lda sinash uchun "Trigger DAG" tugmasini bosing.
-- To'xtatish: `docker compose down`.
+- **UI:** http://localhost:8080 (login: `admin`, parol: `admin`)
+- `amocrm_etl` degan DAG'ni topib **yoqing** — keyin har 15 daqiqada o'zi ishlaydi.
+- Qo'lda sinash uchun "Trigger DAG" tugmasini bosing.
 
-### Har jadval — alohida task
+**Kuzatuv:**
+- Har jadval alohida task (`load_leads`, `load_contacts`, ...). UI'da qaysi biri
+  ishladi (yashil) yoki xato berdi (qizil) — darrov ko'rinadi.
+- Har run natijasi bazadagi `etl_run_log` jadvaliga ham yoziladi:
+  ```sql
+  SELECT * FROM public.etl_run_log ORDER BY logged_at DESC;
+  ```
+  Bu yerda qaysi jadval nechta yozuv yuklagani va nima xato bergani ko'rinadi.
 
-DAG'da har bir entity **alohida task** (`load_leads`, `load_contacts`, ...). Grid
-view'da qaysi jadval muvaffaqiyatli (yashil), qaysi biri xato (qizil) ekani ko'rinadi;
-har task'ning o'z log'i va traceback'i bor. Task'lar **ketma-ket** ishlaydi (dlt state
-xavfsizligi va rate-limit uchun).
+### Analitika bazasi (`analytics-db`)
 
-### Kuzatuv jadvali — `etl_run_log`
+Compose ichida **ikkita** PostgreSQL bor:
+- `postgres` — Airflow'ning o'z metadata bazasi (tegilmaydi).
+- **`analytics-db`** — amoCRM ma'lumoti shu yerga yig'iladi.
 
-Har run natijasi PostgreSQL'dagi `etl_run_log` jadvaliga ham yoziladi:
+`postgres_config.json` `analytics-db`ga sozlangan (`host: analytics-db`, port 5432).
+Ma'lumotni **host kompyuterdan** ko'rish uchun `localhost:5433` orqali ulaning:
 
-```sql
-SELECT * FROM <schema>.etl_run_log ORDER BY logged_at DESC;
+```bash
+# eng oson — konteyner ichidagi psql (host'da psql o'rnatilmagan bo'lsa ham)
+docker compose exec analytics-db psql -U postgres -d amocrm -c "\dt public.*"
+
+# yoki DBeaver / Power BI: host=localhost, port=5433, db=amocrm, user=postgres
 ```
 
-Ustunlar: `dag_run_id`, `table_name`, `status` (success/failed), `rows_loaded`,
-`load_id`, `error`, `logged_at`. Qaysi jadval nima xato qaytarganini shu yerdan
-ko'rish mumkin.
+> **Auto state-reset:** boshqa/yangi bazaga o'tsangiz, dlt eski state'ni o'zi
+> tozalab, toza backfill qiladi (`runner.py`) — "relation does not exist" xatosi
+> chiqmaydi.
 
-### ⚠️ Docker eslatmalari
+### ⚠️ O'chirish (delete) haqida
 
-- Compose ichidagi `postgres` — bu **Airflow'ning o'z** metadata bazasi. Sizning
-  analitika bazangiz (`postgres_config.json`) bundan **alohida**.
-- Agar analitika bazasi host mashinada ishlab tursa, `postgres_config.json`'da
-  `host` sifatida `localhost` emas, **`host.docker.internal`** yozing.
+amoCRM'da lead/kontakt **o'chirsangiz**, u bazada **qolib ketadi** (incremental+merge
+o'chirishlarni aks ettirmaydi). Joriy holat aniq kerak bo'lsa: vaqti-vaqti to'liq
+reload yoki `events` orqali o'chirishni kuzatish (hozircha amalga oshirilmagan).
+
+---
 
 ## Loyiha tuzilishi
 
 ```
-dlt_pipeline/            # EL bosqichi (dlt)
+dlt_pipeline/            # amoCRM'dan olish (dlt)
   amocrm/
-    config.py    # auth.json + postgres_config.json o'qish/tekshirish (AMOCRM_CONFIG_DIR env)
-    client.py    # RESTClient + rate-limit (≤6 req/s) + 429/ulanish retry + pagination
-    source.py    # 11 ta dlt resource + RESOURCE_NAMES ro'yxati
-    runner.py    # yadro: pipeline/source yasash, run_table(), etl_run_log audit
-  amocrm_pipeline.py   # qo'lda ishga tushirish nuqtasi (butun source bir yo'la)
+    config.py    # config fayllarni o'qish
+    client.py    # amoCRM API bilan ishlash (rate-limit, retry, pagination)
+    source.py    # qaysi jadvallar olinishi
+    runner.py    # ishga tushirish yadrosi + etl_run_log
+  pipeline.py    # qo'lda ishga tushirish nuqtasi
   requirements.txt
-dbt_project/             # T bosqichi (dbt) — hozircha faqat papka skeleti, model yozilmagan
+dbt_project/             # tozalash/transformatsiya (dbt) — hozircha bo'sh skelet
   models/{staging,intermediate,marts}/
 dags/
-  amocrm_dag.py    # Airflow DAG: har jadval alohida task, */15 jadval
-docker/Dockerfile      # Airflow image + dlt[postgres] + requests
-docker-compose.yaml    # Airflow (LocalExecutor) stack
+  amocrm_dag.py    # Airflow jadvali (har 15 daqiqa)
+docker/, docker-compose.yaml   # Airflow konteynerlari
 ```
 
-Config fayllar (`auth.json`, `postgres_config.json`) repo ildizida qoladi.
+Config fayllar (`auth.json`, `postgres_config.json`) repo ildizida turadi.
+
+---
+
+## ⚠️ Bitta muhim eslatma — tezlik
+
+amoCRM'da `filter[updated_at]` degan filtr **Alpha** bosqichida va hisob
+sozlamalarida yoqilishi kerak. **O'chiq bo'lsa** pipeline baribir to'g'ri ishlaydi
+(baza toza qoladi), lekin **sekinroq** bo'ladi — chunki amoCRM har safar hamma
+ma'lumotni qaytaradi, dlt esa keraksizini o'zi tashlaydi.
+
+Pipeline ishga tushganda bu filtr o'chiq bo'lsa konsolda ogohlantirish chiqaradi.
+Tezlashtirish uchun amoCRM qo'llab-quvvatlash xizmatidan uni yoqishni so'rang.
+
+---
+
+## Foydali buyruqlar
+
+```bash
+# oxirgi yuklash / dlt holatini ko'rish
+./.venv/bin/dlt pipeline amocrm info
+
+# Airflow scheduler loglarini kuzatish
+docker compose logs -f airflow-scheduler
+```
