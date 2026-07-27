@@ -27,9 +27,8 @@ def _run(table_name: str, **context) -> int:
     bilan ishga tushiring — shunda shu run'da barcha jadval noldan yuklanadi
     (konteynerni qayta ishga tushirish shart emas).
     """
-    dag_run = context.get("dag_run")                     # shu DAG-run obyekti
-    conf = (getattr(dag_run, "conf", None) or {})        # trigger paytida berilgan config
-    if conf.get("full_refresh"):                         # {"full_refresh": true} berilgan bo'lsa
+    params = context.get("params") or {}                 # default {"full_refresh": False} + trigger override
+    if params.get("full_refresh"):                       # forma'da true qilinган bo'lsa
         os.environ["AMOCRM_FULL_REFRESH"] = "1"          # runner shu env'ni ko'rib to'liq reload qiladi
 
     dag_run_id = context.get("run_id", "")               # shu DAG-run identifikatori
@@ -52,6 +51,7 @@ with DAG(
     max_active_runs=1,                                   # run'lar ustma-ust tushmaydi
     default_args=default_args,
     tags=["amocrm", "etl", "dlt"],                       # UI filtrlash uchun teglar
+    params={"full_refresh": False},                      # Trigger formasi shu qiymat bilan ochiladi
 ) as dag:
 
     previous_task = None                                 # ketma-ket zanjir qurish uchun
