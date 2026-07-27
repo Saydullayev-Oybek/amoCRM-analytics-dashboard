@@ -22,7 +22,7 @@ x-airflow-common: &airflow-common
     DLT_DATA_DIR: /opt/airflow/dlt_data       # dlt state/loglar shu yerda saqlanadi
   volumes:
     - ./dags:/opt/airflow/dags                                  # DAG fayllar
-    - ./amocrm:/opt/airflow/project/amocrm                      # amocrm paketi (PYTHONPATH orqali)
+    - ./dlt_pipeline/amocrm:/opt/airflow/project/amocrm         # amocrm paketi (PYTHONPATH orqali)
     - ./auth.json:/opt/airflow/config/auth.json:ro             # amoCRM token (faqat o'qish)
     - ./postgres_config.json:/opt/airflow/config/postgres_config.json:ro  # analitika baza sozlamasi
     - ./logs:/opt/airflow/logs                                  # Airflow loglar

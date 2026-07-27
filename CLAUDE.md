@@ -12,14 +12,14 @@ custom fields, pivoting, etc. is deferred to a downstream (dbt) layer.
 ## Commands
 
 ```bash
-# Run the pipeline manually (first run = full backfill, later runs = incremental)
-./.venv/bin/python pipeline.py
+# Run the pipeline manually (run from repo root; first run = full backfill, later = incremental)
+./.venv/bin/python dlt_pipeline/amocrm_pipeline.py
 
 # Inspect dlt state / last load
 ./.venv/bin/dlt pipeline amocrm info
 
 # Install deps (Python 3.12 or 3.13 ONLY — dlt does not support 3.14)
-uv pip install --python .venv/bin/python -r requirements.txt
+uv pip install --python .venv/bin/python -r dlt_pipeline/requirements.txt
 
 # --- Airflow (Docker Compose) ---
 docker compose up -d --build     # build image + start Airflow (UI: http://localhost:8080, admin/admin)
@@ -40,22 +40,28 @@ Always use the project virtualenv at `./.venv/bin/python`. There is no test suit
 ## Architecture
 
 ```
-amocrm/
-  config.py   # read & validate auth.json + postgres_config.json; build PG conn string
-  client.py   # RESTClient + rate-limit (≤6 req/s) + 429 retry + HAL pagination
-  source.py   # @dlt.source with 11 resources (one per entity); RESOURCE_NAMES list
-  runner.py   # reusable core: build_pipeline/build_source, run_table(), etl_run_log audit
-pipeline.py   # CLI entry point: load config, run whole source into postgres, print summary
+dlt_pipeline/                # EL layer (dlt)
+  amocrm/
+    config.py   # read & validate auth.json + postgres_config.json; build PG conn string
+    client.py   # RESTClient + rate-limit (≤6 req/s) + 429 retry + HAL pagination
+    source.py   # @dlt.source with 11 resources (one per entity); RESOURCE_NAMES list
+    runner.py   # reusable core: build_pipeline/build_source, run_table(), etl_run_log audit
+  amocrm_pipeline.py   # CLI entry point: load config, run whole source into postgres, print summary
+  requirements.txt
+dbt_project/                 # T layer (dbt) — folder skeleton only, no models written yet
+  models/{staging,intermediate,marts}/
 dags/
-  amocrm_etl_dag.py   # Airflow DAG: one task per table, sequential, */15 schedule
+  amocrm_dag.py       # Airflow DAG: one task per table, sequential, */15 schedule
 docker/Dockerfile     # apache/airflow image + dlt[postgres] + requests
 docker-compose.yaml   # LocalExecutor stack (Airflow metadata PG + webserver + scheduler)
 ```
 
-Data flows: `pipeline.py` → `amocrm_source(client)` (source.py) → each resource
-paginates via `paginate()` (client.py) → dlt normalizes & loads into PostgreSQL.
+Config files (`auth.json`, `postgres_config.json`) stay at the repo root.
 
-Under Airflow: `dags/amocrm_etl_dag.py` → `run_table(name)` (runner.py) →
+Data flows: `dlt_pipeline/amocrm_pipeline.py` → `amocrm_source(client)` (source.py) →
+each resource paginates via `paginate()` (client.py) → dlt normalizes & loads into PostgreSQL.
+
+Under Airflow: `dags/amocrm_dag.py` → `run_table(name)` (runner.py) →
 `pipeline.run(source.with_resources(name))` — **one task per table**, run
 sequentially so dlt state stays consistent and the 6 req/s limit is respected.
 
@@ -80,7 +86,7 @@ creates its own `_dlt_*` bookkeeping tables.
   `last_value` is set.
 - **Alpha filter caveat:** amoCRM's `filter[updated_at]` is an Alpha feature that
   must be enabled in account settings (`is_api_filter_enabled`). If off, the
-  filter is *silently ignored* and every run does a full scan. `pipeline.py`
+  filter is *silently ignored* and every run does a full scan. `amocrm_pipeline.py`
   checks this on startup and warns.
 - **Rate limiting:** amoCRM allows 7 req/s; the client throttles to 6. 429s are
   retried honoring `Retry-After`. Note dlt's `paginate` sets a `raise_for_status`

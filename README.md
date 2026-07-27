@@ -16,11 +16,11 @@ pivot qilish yoki boshqa transformatsiya keyingi (dbt) bosqichga qoldiriladi.
 ```bash
 # 3.13 virtual muhit (uv bilan)
 uv venv --python 3.13 .venv
-uv pip install --python .venv/bin/python -r requirements.txt
+uv pip install --python .venv/bin/python -r dlt_pipeline/requirements.txt
 
 # yoki standart pip bilan
 python3.13 -m venv .venv
-./.venv/bin/pip install -r requirements.txt
+./.venv/bin/pip install -r dlt_pipeline/requirements.txt
 ```
 
 ## Sozlash
@@ -61,7 +61,8 @@ Bu fayl ham `.gitignore`'da.
 ## Ishga tushirish
 
 ```bash
-./.venv/bin/python pipeline.py
+# repo ildizidan turib ishga tushiring (auth.json / postgres_config.json shu yerda)
+./.venv/bin/python dlt_pipeline/amocrm_pipeline.py
 ```
 
 - **Birinchi run** — to'liq backfill (barcha ma'lumot tortiladi).
@@ -102,9 +103,9 @@ yaratadi: `_dlt_loads`, `_dlt_pipeline_state`, `_dlt_version`.
 
 ### Incrementalni tekshirish
 
-1. `pipeline.py`'ni ishga tushiring — to'liq backfill bo'ladi.
+1. `amocrm_pipeline.py`'ni ishga tushiring — to'liq backfill bo'ladi.
 2. amoCRM'da bitta lead'ni o'zgartiring (yoki yangi qo'shing).
-3. `pipeline.py`'ni qayta ishga tushiring — konsol yakunida faqat o'sha bitta
+3. `amocrm_pipeline.py`'ni qayta ishga tushiring — konsol yakunida faqat o'sha bitta
    (yoki bir nechta) o'zgargan yozuv ko'rsatilishi kerak.
 4. dlt state'ni ko'rish: `./.venv/bin/dlt pipeline amocrm info`.
 
@@ -160,14 +161,20 @@ ko'rish mumkin.
 ## Loyiha tuzilishi
 
 ```
-amocrm/
-  config.py    # auth.json + postgres_config.json o'qish/tekshirish (AMOCRM_CONFIG_DIR env)
-  client.py    # RESTClient + rate-limit (≤6 req/s) + 429/ulanish retry + pagination
-  source.py    # 11 ta dlt resource + RESOURCE_NAMES ro'yxati
-  runner.py    # yadro: pipeline/source yasash, run_table(), etl_run_log audit
-pipeline.py    # qo'lda ishga tushirish nuqtasi (butun source bir yo'la)
+dlt_pipeline/            # EL bosqichi (dlt)
+  amocrm/
+    config.py    # auth.json + postgres_config.json o'qish/tekshirish (AMOCRM_CONFIG_DIR env)
+    client.py    # RESTClient + rate-limit (≤6 req/s) + 429/ulanish retry + pagination
+    source.py    # 11 ta dlt resource + RESOURCE_NAMES ro'yxati
+    runner.py    # yadro: pipeline/source yasash, run_table(), etl_run_log audit
+  amocrm_pipeline.py   # qo'lda ishga tushirish nuqtasi (butun source bir yo'la)
+  requirements.txt
+dbt_project/             # T bosqichi (dbt) — hozircha faqat papka skeleti, model yozilmagan
+  models/{staging,intermediate,marts}/
 dags/
-  amocrm_etl_dag.py    # Airflow DAG: har jadval alohida task, */15 jadval
+  amocrm_dag.py    # Airflow DAG: har jadval alohida task, */15 jadval
 docker/Dockerfile      # Airflow image + dlt[postgres] + requests
 docker-compose.yaml    # Airflow (LocalExecutor) stack
 ```
+
+Config fayllar (`auth.json`, `postgres_config.json`) repo ildizida qoladi.
