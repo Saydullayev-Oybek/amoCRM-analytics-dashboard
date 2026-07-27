@@ -17,6 +17,7 @@ import dlt                                  # ETL freymvork (pipeline yaratish)
 
 from amocrm.client import build_client      # sozlangan RESTClient yasovchi
 from amocrm.config import ConfigError, load_auth, load_postgres_config  # konfiguratsiya o'qish
+from amocrm.runner import _full_refresh_enabled  # AMOCRM_FULL_REFRESH env tekshiruvi
 from amocrm.source import amocrm_source     # 11 ta resource'li dlt manbasi
 
 logging.basicConfig(                        # loglarni bir marta global sozlaymiz
@@ -91,7 +92,12 @@ def main() -> int:
         progress="log",                                         # jarayonni logga chiqarib turadi
     )
 
-    load_info = pipeline.run(amocrm_source(client))            # manbani ishga tushirib, ma'lumotni yuklaymiz
+    # AMOCRM_FULL_REFRESH=1 bo'lsa: hamma jadval va holat tashlanib, noldan yuklanadi.
+    refresh = "drop_sources" if _full_refresh_enabled() else None
+    if refresh:
+        log.warning("AMOCRM_FULL_REFRESH yoqilgan — hamma jadval to'liq qayta yuklanadi.")
+
+    load_info = pipeline.run(amocrm_source(client), refresh=refresh)  # manbani ishga tushirib, yuklaymiz
     log.info("Yuklash yakunlandi: %s", load_info)              # natija haqida xabar
     print_load_summary(pipeline)                               # jadval bo'yicha sanoqni chiqaramiz
     return 0                                                    # muvaffaqiyatli tugadi (0 = OK)

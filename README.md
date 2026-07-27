@@ -140,6 +140,26 @@ amoCRM'da lead/kontakt **o'chirsangiz**, u bazada **qolib ketadi** (incremental+
 o'chirishlarni aks ettirmaydi). Joriy holat aniq kerak bo'lsa: vaqti-vaqti to'liq
 reload yoki `events` orqali o'chirishni kuzatish (hozircha amalga oshirilmagan).
 
+### To'liq qayta yuklash (full reload)
+
+Hamma ma'lumotni noldan qayta yuklamoqchi bo'lsangiz:
+
+- **Airflow'da (eng oson):** DAG'ni **"Trigger DAG w/ config"** orqali quyidagi config
+  bilan ishga tushiring — konteynerni qayta ishga tushirish shart emas:
+  ```json
+  {"full_refresh": true}
+  ```
+  Shu run'da har jadval tashlanib, noldan yuklanadi. Keyingi oddiy runlar yana
+  incremental bo'ladi.
+
+- **CLI'da:**
+  ```bash
+  AMOCRM_FULL_REFRESH=1 ./.venv/bin/python dlt_pipeline/pipeline.py
+  ```
+
+- **Qo'lda (to'liq tozalash):** bazani `DROP SCHEMA public CASCADE; CREATE SCHEMA public;`
+  qilib, `rm -rf dlt_data/pipelines/amocrm` bilan state'ni o'chirib, keyin ishga tushiring.
+
 ---
 
 ## Loyiha tuzilishi

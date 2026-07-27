@@ -10,6 +10,8 @@ Natijalar `etl_run_log` jadvaliga ham yoziladi (amocrm/runner.py).
 
 from __future__ import annotations
 
+import os                                                # full_refresh env'ini o'rnatish uchun
+
 import pendulum                                          # start_date uchun timezone-aware sana
 from airflow import DAG                                  # DAG konteyneri
 from airflow.operators.python import PythonOperator      # Python funksiyani task qiladigan operator
@@ -19,7 +21,17 @@ from amocrm.source import RESOURCE_NAMES                  # table (resource) nom
 
 
 def _run(table_name: str, **context) -> int:
-    """PythonOperator chaqiradigan o'rovchi: Airflow run_id'ni run_table'ga uzatadi."""
+    """PythonOperator chaqiradigan o'rovchi: Airflow run_id'ni run_table'ga uzatadi.
+
+    To'liq qayta yuklash: DAG'ni "Trigger DAG w/ config" orqali {"full_refresh": true}
+    bilan ishga tushiring — shunda shu run'da barcha jadval noldan yuklanadi
+    (konteynerni qayta ishga tushirish shart emas).
+    """
+    dag_run = context.get("dag_run")                     # shu DAG-run obyekti
+    conf = (getattr(dag_run, "conf", None) or {})        # trigger paytida berilgan config
+    if conf.get("full_refresh"):                         # {"full_refresh": true} berilgan bo'lsa
+        os.environ["AMOCRM_FULL_REFRESH"] = "1"          # runner shu env'ni ko'rib to'liq reload qiladi
+
     dag_run_id = context.get("run_id", "")               # shu DAG-run identifikatori
     return run_table(table_name, dag_run_id=dag_run_id)  # table'ni yuklaymiz
 

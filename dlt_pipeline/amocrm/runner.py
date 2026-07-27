@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib                          # destination "barmoq izini" hisoblash uchun
 import logging                          # log xabarlari uchun
+import os                               # AMOCRM_FULL_REFRESH env'ini o'qish uchun
 import shutil                           # eski state papkasini o'chirish uchun
 from pathlib import Path                # fayl yo'llari
 
@@ -27,6 +28,15 @@ log = logging.getLogger("amocrm")       # "amocrm" loggeri
 AUDIT_TABLE = "etl_run_log"
 # Pipeline nomi — state shu nom bilan saqlanadi.
 PIPELINE_NAME = "amocrm"
+
+
+def _full_refresh_enabled() -> bool:
+    """AMOCRM_FULL_REFRESH env yoqilgan bo'lsa True — to'liq qayta yuklash.
+
+    Yoqilганда har resource o'z jadvalini va incremental holatini tashlab,
+    noldan qayta yuklaydi (baza/state qo'lda tozalash shart emas). Odatda o'chiq.
+    """
+    return os.environ.get("AMOCRM_FULL_REFRESH", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _destination_fingerprint(pg: dict) -> str:
@@ -134,9 +144,13 @@ def run_table(table_name: str, dag_run_id: str = "") -> int:
     ensure_audit_table()                                       # audit jadval borligiga ishonch hosil qilamiz
     pipeline = build_pipeline()                                # dlt pipeline
     source = build_source()                                    # amoCRM source
+    # AMOCRM_FULL_REFRESH=1 bo'lsa: shu resource jadvalini va holatini tashlab, noldan yuklaymiz.
+    refresh = "drop_resources" if _full_refresh_enabled() else None
+    if refresh:
+        log.warning("AMOCRM_FULL_REFRESH yoqilgan — '%s' to'liq qayta yuklanadi.", table_name)
     try:
         # Faqat bitta resource'ni ishga tushiramiz (qolganlari alohida task'larda).
-        load_info = pipeline.run(source.with_resources(table_name))  # yuklash
+        load_info = pipeline.run(source.with_resources(table_name), refresh=refresh)  # yuklash
         counts = {}                                            # jadval → qatorlar soni
         trace = pipeline.last_trace                            # oxirgi run tafsiloti
         if trace is not None and trace.last_normalize_info is not None:

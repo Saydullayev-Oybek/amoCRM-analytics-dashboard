@@ -128,6 +128,10 @@ creates its own `_dlt_*` bookkeeping tables.
   `amocrm` pipeline is wiped so a fresh full backfill runs — prevents
   "relation … does not exist" when pointing at a new/empty DB. The marker lives at
   `<DLT_DATA_DIR>/pipelines/.amocrm_destination`.
+- **Full reload toggle:** set `AMOCRM_FULL_REFRESH=1` to force a from-scratch reload
+  (runner passes dlt `refresh="drop_resources"`; CLI `pipeline.py` uses
+  `"drop_sources"`). In Airflow, trigger the DAG with config `{"full_refresh": true}`
+  (`_run` sets the env for that run) — no container restart needed. Off by default.
 - **Schedule:** `*/15 * * * *`, `catchup=False`, `max_active_runs=1` (no overlap).
   Retries: 2 per task (on top of client.py's 429/connection retries).
 
