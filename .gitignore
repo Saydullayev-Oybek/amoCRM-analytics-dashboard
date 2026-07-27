@@ -2,6 +2,7 @@
 auth.json
 postgres_config.json
 .dlt/secrets.toml
+dbt_project/profiles.yml
 
 # Python
 my_env/
@@ -20,3 +21,9 @@ leads_test.json
 logs/
 dlt_data/
 .env
+
+# dbt (ishlash paytida yaratiladigan papkalar)
+dbt_project/target/
+dbt_project/dbt_packages/
+dbt_project/logs/
+dbt_project/.user.yml

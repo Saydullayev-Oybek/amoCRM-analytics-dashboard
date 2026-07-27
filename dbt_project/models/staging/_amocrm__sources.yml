@@ -1,0 +1,12 @@
+version: 2
+
+# Xom ma'lumot manbalari — dlt yuklagan raw_data schema'sidagi jadvallar.
+sources:
+  - name: amocrm
+    schema: raw_data # dlt shu schema'ga yozadi
+    description: "amoCRM'dan dlt orqali yuklangan xom jadvallar"
+    tables:
+      - name: leads # bitimlar (lidlar)
+      - name: users # menejerlar (foydalanuvchilar)
+      - name: pipelines___embedded__statuses # voronka bosqichlari (dlt bola jadvali)
+        description: "Voronka bosqichlari: id, name (bosqich nomi), sort (tartib)"

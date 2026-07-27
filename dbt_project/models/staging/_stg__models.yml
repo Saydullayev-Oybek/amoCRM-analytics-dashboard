@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: stg_amocrm__leads
+    description: "Tozalangan bitimlar (lidlar)"
+    columns:
+      - name: lead_id
+        description: "Bitim id (birlamchi kalit)"
+        data_tests: [not_null, unique]
+      - name: manager_id
+        description: "Mas'ul menejer id"
+      - name: status_id
+        description: "Voronka bosqichi id"
+
+  - name: stg_amocrm__users
+    description: "Menejerlar"
+    columns:
+      - name: user_id
+        description: "Menejer id (birlamchi kalit)"
+        data_tests: [not_null, unique]
+
+  - name: stg_amocrm__pipeline_statuses
+    description: "Voronka bosqichlari (nom + tartib)"
+    columns:
+      - name: status_id
+        description: "Bosqich id (birlamchi kalit)"
+        data_tests: [not_null, unique]

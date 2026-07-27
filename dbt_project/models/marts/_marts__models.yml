@@ -1,0 +1,15 @@
+version: 2
+
+models:
+  - name: mart_leads_by_stage
+    description: "Menejer × voronka bosqichi bo'yicha bitimlar soni (voronka hisoboti)"
+    columns:
+      - name: manager_name
+        description: "Menejer ismi"
+        data_tests: [not_null]
+      - name: stage_name
+        description: "Voronka bosqichi nomi"
+        data_tests: [not_null]
+      - name: lead_count
+        description: "Shu bosqichdagi bitimlar soni"
+        data_tests: [not_null]

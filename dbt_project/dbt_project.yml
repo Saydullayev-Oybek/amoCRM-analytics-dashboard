@@ -1,0 +1,23 @@
+# dbt loyiha konfiguratsiyasi (amoCRM analitika transformatsiyasi).
+name: "amocrm"
+version: "1.0.0"
+profile: "amocrm" # profiles.yml dagi ulanish nomi
+
+# Papka joylashuvi.
+model-paths: ["models"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+# Har qatlam qaysi schema'ga va qanday materializatsiya bo'lishi.
+models:
+  amocrm:
+    staging:
+      +materialized: view # staging — yengil view
+      +schema: staging # -> "staging" schema (raw_data'ga tegilmaydi)
+    intermediate:
+      +materialized: view
+      +schema: intermediate # -> "intermediate" schema
+    marts:
+      +materialized: table # marts — tez o'qish uchun jadval
+      +schema: marts # -> "marts" schema

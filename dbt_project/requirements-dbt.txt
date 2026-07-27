@@ -1,0 +1,2 @@
+# dbt (T qatlami) uchun paketlar. dlt paketlaridan alohida.
+dbt-postgres>=1.8
