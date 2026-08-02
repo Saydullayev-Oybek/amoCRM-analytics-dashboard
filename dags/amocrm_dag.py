@@ -6,6 +6,10 @@ Task'lar ketma-ket ishlaydi: dlt state xavfsiz bo'lishi va amoCRM rate-limitini
 (6 req/s) hurmat qilish uchun (parallel hammering yo'q).
 
 Natijalar `etl_run_log` jadvaliga ham yoziladi (amocrm/runner.py).
+
+Zanjirning OXIRIDA `dbt_build` taski turadi: barcha jadval yuklangach dbt
+transformatsiyasi (staging → marts) ishlaydi, shunda marts har doim endigina
+yuklangan ma'lumotga mos bo'ladi.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ import os                                                # full_refresh env'ini 
 
 import pendulum                                          # start_date uchun timezone-aware sana
 from airflow import DAG                                  # DAG konteyneri
+from airflow.operators.bash import BashOperator          # dbt'ni CLI sifatida chaqirish uchun
 from airflow.operators.python import PythonOperator      # Python funksiyani task qiladigan operator
 
 from amocrm.runner import run_table                       # bitta table'ni yuklaydigan yadro funksiya
@@ -64,3 +69,19 @@ with DAG(
         if previous_task is not None:                    # oldingi task bo'lsa
             previous_task >> task                        # ketma-ket bog'laymiz (t1 >> t2)
         previous_task = task                             # keyingi iteratsiya uchun eslab qolamiz
+
+    # --- T qatlami: barcha jadval yuklangandan KEYIN dbt ishlaydi ---
+    # "build" = run + test aralash tartibda: model qurilgach darhol uning testlari
+    # ishlaydi va test yiqilsa undan keyingi modellar QURILMAYDI (run+test alohida
+    # bo'lganda buzuq fct ustiga mart baribir qurilib ketardi).
+    # --target docker → profiles.yml'dagi analytics-db:5432 ulanishi (localhost emas).
+    dbt_build = BashOperator(
+        task_id="dbt_build",                             # UI'da: dbt_build
+        bash_command=(
+            "cd /opt/airflow/dbt_project && "
+            "dbt build --target docker --no-use-colors"
+        ),
+    )
+
+    if previous_task is not None:                        # oxirgi load_* taskidan keyin
+        previous_task >> dbt_build                       # zanjir oxiriga ulaymiz

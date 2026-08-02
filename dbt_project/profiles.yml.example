@@ -1,5 +1,8 @@
 # Namuna. Nusxa oling -> profiles.yml va to'ldiring (profiles.yml git'ga tushmaydi).
-# Host'dan: host=localhost, port=5433. Docker ichidan: host=analytics-db, port=5432.
+# Ikkala target ham kerak:
+#   dev    — HOST kompyuterdan qo'lda "dbt build" uchun    (localhost:5433)
+#   docker — Airflow DAG konteyner ichidan ishlatadi        (analytics-db:5432)
+# Parol ikkalasida bir xil — bu bitta bazaning ikki xil manzili.
 amocrm:
   target: dev
   outputs:
@@ -7,6 +10,16 @@ amocrm:
       type: postgres
       host: localhost
       port: 5433
+      user: postgres
+      password: your-postgres-password
+      dbname: amocrm
+      schema: analytics
+      threads: 4
+
+    docker:
+      type: postgres
+      host: analytics-db
+      port: 5432
       user: postgres
       password: your-postgres-password
       dbname: amocrm

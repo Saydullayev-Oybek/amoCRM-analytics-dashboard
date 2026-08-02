@@ -21,6 +21,10 @@ custom fields, pivoting, etc. is deferred to a downstream (dbt) layer.
 # Install deps (Python 3.12 or 3.13 ONLY — dlt does not support 3.14)
 uv pip install --python .venv/bin/python -r dlt_pipeline/requirements.txt
 
+# --- dbt (T layer) — MUST be run from inside dbt_project/ (that's where profiles.yml lives) ---
+cd dbt_project && ../.venv/bin/dbt build     # run + test interleaved (target: dev)
+cd dbt_project && ../.venv/bin/dbt debug     # show which profiles.yml / connection is used
+
 # --- Airflow (Docker Compose) ---
 docker compose up -d --build     # build image + start Airflow (UI: http://localhost:8080, admin/admin)
 docker compose logs -f airflow-scheduler
@@ -52,11 +56,15 @@ dlt_pipeline/                # EL layer (dlt)
                 #   auto-reset of local dlt state when the destination DB changes
   pipeline.py   # CLI entry point: load config, run whole source into postgres, print summary
   requirements.txt
-dbt_project/                 # T layer (dbt) — folder skeleton only, no models written yet
-  models/{staging,intermediate,marts}/
+dbt_project/                 # T layer (dbt) — star schema over raw_data
+  profiles.yml        # gitignored. TWO targets: dev (localhost:5433) / docker (analytics-db:5432)
+  models/staging/     # views, 1:1 translation of raw tables
+  models/intermediate/  # currently empty (kept for future use)
+  models/marts/       # fct_leads, dim_managers, dim_stages, mart_leads_{monthly,by_stage}
+  tests/              # singleton tests (assert_lead_count_preserved)
 dags/
-  amocrm_dag.py       # Airflow DAG: one task per table, sequential, */15 schedule
-docker/Dockerfile     # apache/airflow image + dlt[postgres] + requests
+  amocrm_dag.py       # Airflow DAG: one task per table, sequential, then dbt_build, */15 schedule
+docker/Dockerfile     # apache/airflow image + dlt[postgres] + requests + dbt-postgres
 docker-compose.yaml   # Airflow (LocalExecutor) + analytics-db (the analytics PostgreSQL)
 ```
 
@@ -113,6 +121,13 @@ creates its own `_dlt_*` bookkeeping tables.
   limiting. Each table gets its own status/log/retry in the UI = per-table monitoring.
 - **Never** build the client or read config at DAG top level; only inside
   `run_table()` (runner.py), which runs at task execution time.
+- **`dbt_build` is the last task in the chain** — a `BashOperator` running
+  `dbt build --target docker` after all 11 loads succeed, so marts always match
+  the data just loaded. `build` (not `run` + `test`) so a failing test blocks the
+  models downstream of it. The `docker` target exists because inside the
+  container analytics-db is `analytics-db:5432`, not `localhost:5433` — same
+  split as `postgres_config.json`. `DBT_PROFILES_DIR` and the `./dbt_project`
+  bind-mount are set in `docker-compose.yaml`.
 - **Audit table `etl_run_log`** (in the configured schema) records per-run,
   per-table `status` / `rows_loaded` / `load_id` / `error`. Created lazily by
   `ensure_audit_table()`. Query it to see which table failed and why.

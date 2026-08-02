@@ -25,6 +25,7 @@ x-airflow-common: &airflow-common
     PYTHONPATH: /opt/airflow/project          # amocrm paketini import qilish uchun
     AMOCRM_CONFIG_DIR: /opt/airflow/config    # auth.json / postgres_config.json shu yerda
     DLT_DATA_DIR: /opt/airflow/dlt_data       # dlt state/loglar shu yerda saqlanadi
+    DBT_PROFILES_DIR: /opt/airflow/dbt_project  # profiles.yml shu papkada (dbt uni shu yerdan o'qiydi)
   volumes:
     - ./dags:/opt/airflow/dags                                  # DAG fayllar
     - ./dlt_pipeline/amocrm:/opt/airflow/project/amocrm         # amocrm paketi (PYTHONPATH orqali)
@@ -32,6 +33,7 @@ x-airflow-common: &airflow-common
     - ./postgres_config.json:/opt/airflow/config/postgres_config.json:ro  # analitika baza sozlamasi
     - ./logs:/opt/airflow/logs                                  # Airflow loglar
     - ./dlt_data:/opt/airflow/dlt_data                          # dlt working dir
+    - ./dbt_project:/opt/airflow/dbt_project                    # dbt modellari + profiles.yml (yozish kerak: target/, logs/)
   depends_on:
     postgres:
       condition: service_healthy
