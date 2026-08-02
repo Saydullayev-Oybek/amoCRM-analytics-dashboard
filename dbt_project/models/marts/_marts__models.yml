@@ -1,14 +1,90 @@
 version: 2
 
 models:
+  # --- Star schema: fakt + o'lchovlar ---
+
+  - name: fct_leads
+    description: "FAKT: bitimlar. Grain — bitta tirik bitim = bitta qator. O'lchov ustuni yo'q, metrika count(*)."
+    columns:
+      - name: lead_id
+        description: "Bitim id (birlamchi kalit)"
+        data_tests: [not_null, unique]
+      - name: manager_id
+        description: "Mas'ul menejer id"
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_managers')
+                field: manager_id
+      - name: pipeline_id
+        description: "Voronka id (dim_stages kalitining 1-qismi)"
+        data_tests: [not_null]
+      - name: status_id
+        description: "Bosqich id (dim_stages kalitining 2-qismi)"
+        data_tests: [not_null]
+      - name: created_at
+        description: "Bitim yaratilgan vaqt"
+        data_tests: [not_null]
+
+  - name: dim_managers
+    description: "O'LCHOV: menejerlar (amoCRM foydalanuvchilari)"
+    columns:
+      - name: manager_id
+        description: "Menejer id (birlamchi kalit)"
+        data_tests: [not_null, unique]
+      - name: manager_name
+        description: "Menejer ismi"
+        data_tests: [not_null]
+
+  - name: dim_stages
+    description: "O'LCHOV: voronka bosqichlari. Tabiiy kalit — (pipeline_id, status_id)."
+    columns:
+      - name: stage_key
+        description: "Surrogat kalit: pipeline_id + '-' + status_id"
+        data_tests: [not_null, unique]
+      - name: pipeline_id
+        description: "Voronka id"
+        data_tests: [not_null]
+      - name: status_id
+        description: "Bosqich id (voronkalar orasida takrorlanadi: 142/143)"
+        data_tests: [not_null]
+      - name: stage_name
+        description: "Bosqich nomi"
+        data_tests: [not_null]
+      - name: is_won
+        description: "Yutilgan bosqichmi (status_id = 142)"
+        data_tests: [not_null]
+      - name: is_lost
+        description: "Yo'qotilgan bosqichmi (status_id = 143)"
+        data_tests: [not_null]
+
+  # --- Agregat marts ---
+
+  - name: mart_leads_monthly
+    description: "Oy bo'yicha yaratilgan bitimlar soni + kumulyativ o'sish"
+    columns:
+      - name: created_month
+        description: "Oy (oyning birinchi kuni)"
+        data_tests: [not_null, unique]
+      - name: lead_count
+        description: "Shu oyda yaratilgan bitimlar soni"
+        data_tests: [not_null]
+      - name: cumulative_count
+        description: "Shu oygacha to'plangan umumiy bitimlar soni"
+        data_tests: [not_null]
+
   - name: mart_leads_by_stage
-    description: "Menejer × voronka bosqichi bo'yicha bitimlar soni (voronka hisoboti)"
+    description: "Menejer × voronka bosqichi bo'yicha bitimlar soni. DIQQAT: importning taqsimoti, voronka harakati emas."
     columns:
       - name: manager_name
         description: "Menejer ismi"
         data_tests: [not_null]
       - name: stage_name
         description: "Voronka bosqichi nomi"
+        data_tests: [not_null]
+      - name: stage_sort
+        description: "Voronka ichidagi tartib"
         data_tests: [not_null]
       - name: lead_count
         description: "Shu bosqichdagi bitimlar soni"
