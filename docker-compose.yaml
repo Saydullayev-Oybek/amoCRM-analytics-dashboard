@@ -3,6 +3,8 @@
 #   postgres      — Airflow'ning O'Z metadata bazasi (ichki, tegilmaydi)
 #   analytics-db  — SIZNING analitika bazangiz (amoCRM ma'lumoti shu yerga yig'iladi)
 #   airflow-init / webserver / scheduler
+#   metabase-db   — Metabase'ning O'Z bazasi (dashboardlar, foydalanuvchilar)
+#   metabase      — dashboard UI: http://localhost:3000
 #
 # DIQQAT — host nomlanishi:
 #   * Airflow konteyneri ICHIDAN analytics-db'ga ulanish → host = "analytics-db", port 5432
@@ -108,6 +110,54 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
+  # Metabase'ning O'Z bazasi — dashboardlar, so'rovlar, foydalanuvchilar shu yerda.
+  # Alohida servis, chunki `postgres` (Airflow metadata) volume'i allaqachon
+  # initsializatsiya qilingan → unga ikkinchi bazani init-skript bilan qo'shib
+  # bo'lmaydi. Metabase'ning default H2'si ishlatilmaydi — u zaxiralashga yaroqsiz.
+  metabase-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: metabase
+      POSTGRES_PASSWORD: metabase
+      POSTGRES_DB: metabase
+    volumes:
+      - metabase-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "metabase"]
+      interval: 10s
+      retries: 5
+    restart: always
+
+  # Dashboard UI. analytics-db'ni compose tarmog'ida "analytics-db:5432" deb
+  # ko'radi (aynan dbt'ning `docker` targeti ishlatadigan manzil).
+  metabase:
+    image: metabase/metabase:latest
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: metabase-db
+      MB_DB_PORT: 5432
+      MB_DB_DBNAME: metabase
+      MB_DB_USER: metabase
+      MB_DB_PASS: metabase
+      # Metabase saqlaydigan baza parollarini shifrlaydi. Qo'yilmasa ular app
+      # DB'da ochiq matn bo'lib yotadi. Prod'da bu qiymat almashtirilsin.
+      MB_ENCRYPTION_SECRET_KEY: "almashtiring-kamida-32-belgi-uzunlikdagi-sir"
+    ports:
+      - "3000:3000" # jamoa: http://<host-IP>:3000
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 90s # JVM sekin ko'tariladi
+    restart: always
+    depends_on:
+      metabase-db:
+        condition: service_healthy
+      analytics-db:
+        condition: service_healthy
+
 volumes:
   airflow-db:
   analytics-db-data:      # SIZNING analitika bazangiz ma'lumoti
+  metabase-db-data:       # Metabase sozlamalari (dashboardlar shu yerda!)

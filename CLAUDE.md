@@ -65,7 +65,7 @@ dbt_project/                 # T layer (dbt) — star schema over raw_data
 dags/
   amocrm_dag.py       # Airflow DAG: one task per table, sequential, then dbt_build, */15 schedule
 docker/Dockerfile     # apache/airflow image + dlt[postgres] + requests + dbt-postgres
-docker-compose.yaml   # Airflow (LocalExecutor) + analytics-db (the analytics PostgreSQL)
+docker-compose.yaml   # Airflow (LocalExecutor) + analytics-db + metabase & metabase-db
 ```
 
 Config files (`auth.json`, `postgres_config.json`) stay at the repo root.
@@ -149,6 +149,27 @@ creates its own `_dlt_*` bookkeeping tables.
   (`_run` sets the env for that run) — no container restart needed. Off by default.
 - **Schedule:** `*/15 * * * *`, `catchup=False`, `max_active_runs=1` (no overlap).
   Retries: 2 per task (on top of client.py's 429/connection retries).
+
+## Dashboard (Metabase)
+
+- **Two extra compose services:** `metabase` (UI on port 3000) and `metabase-db`
+  (its own PostgreSQL app DB). A dedicated app DB — not the Airflow `postgres`
+  service — because that volume is already initialised, so
+  `/docker-entrypoint-initdb.d` scripts no longer fire; and not the default H2,
+  which is unfit for backup.
+- **Metabase connects as `metabase_ro`**, a read-only role on `analytics-db`
+  (SELECT on `marts` + `staging` only; `raw_data` is deliberately not granted).
+  Metabase exposes a SQL editor to every logged-in user, so it must never use
+  the `postgres` superuser. The role was created by hand — the `analytics-db`
+  volume predates it, so an init script cannot create it.
+- **`alter default privileges` is load-bearing:** dbt *recreates* mart tables on
+  every run, so plain `grant select on all tables` would be lost each time.
+  Verified: after `dbt run` rebuilds `fct_leads`, `metabase_ro` can still read it.
+- **Dashboards are NOT in git** — they live in the `metabase-db-data` volume.
+  Back that volume up; Metabase's YAML serialization is a paid feature. If
+  dashboard-as-code ever becomes a requirement, that means moving to Streamlit.
+- Inside the compose network Metabase reaches the analytics DB as
+  `analytics-db:5432` — the same address dbt's `docker` target uses.
 
 ## Reference
 

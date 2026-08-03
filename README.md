@@ -162,6 +162,106 @@ Hamma ma'lumotni noldan qayta yuklamoqchi bo'lsangiz:
 
 ---
 
+## Dashboard (Metabase)
+
+`docker compose up -d` dan keyin dashboard shu manzilda:
+
+| Kim | Manzil |
+|---|---|
+| Siz (shu kompyuter) | http://localhost:3000 |
+| Jamoa (ichki tarmoq) | `http://<host-IP>:3000` — IP'ni bilish: `ipconfig getifaddr en0` |
+
+**Birinchi marta (bir martalik sozlash):**
+
+1. `http://localhost:3000` — Metabase admin akkauntingizni yarating (email + parol).
+2. Ma'lumot bazasini ulash: **Add your data** → PostgreSQL:
+
+   | Maydon | Qiymat |
+   |---|---|
+   | Host | `analytics-db` |
+   | Port | `5432` |
+   | Database | `amocrm` |
+   | Username | `metabase_ro` |
+   | Password | `metabase_ro_2026` |
+
+   > `localhost` emas, **`analytics-db`** — Metabase konteyner ichida ishlaydi.
+
+3. Jamoa a'zolarini qo'shish: **Admin → People → Invite someone**.
+
+**Nega `metabase_ro`, `postgres` emas:** Metabase'da SQL editor bor, ya'ni kirgan
+odam ixtiyoriy so'rov yoza oladi. `metabase_ro` faqat `marts` va `staging` dan
+**o'qiy** oladi — `raw_data` ko'rinmaydi, `delete`/`drop` ishlamaydi.
+
+Foydalanuvchini qayta yaratish kerak bo'lsa (parolni almashtirish uchun):
+
+```bash
+docker compose exec analytics-db psql -U postgres -d amocrm -c "
+  alter user metabase_ro with password 'yangi-parol';"
+```
+
+### Dashboard qanday yasaladi
+
+Metabase'da mantiq: avval **Question** (bitta grafik), keyin ularni **Dashboard**ga
+yig'asiz.
+
+**1. Jami bitimlar (raqam)**
+
+`+ New → Question → Raw data → Marts → Fct Leads` → **Summarize: Count of rows**
+→ vizualizatsiya **Number** → Save.
+
+**2. Oylik dinamika (chiziq)**
+
+`+ New → Question → Marts → Mart Leads Monthly` → vizualizatsiya **Line**
+(X: `Created Month`, Y: `Lead Count`) → `Add series` bilan `Cumulative Count`
+qo'shiladi → Save.
+
+> Bu jadval **allaqachon oy bo'yicha yig'ilgan** — Summarize qo'shmang, aks holda
+> raqamlar ikki marta yig'iladi.
+
+**3. Bosqich bo'yicha taqsimot (ustun)**
+
+`+ New → Question → Marts → Mart Leads By Stage` → vizualizatsiya **Bar**
+(X: `Stage Name`, Y: `Lead Count`) → Save.
+
+> ⚠️ Notebook editorda **Sort → `Stage Sort` ascending** qadamini qo'shing.
+> Aks holda Metabase ustunlarni alifbo yoki kattalik bo'yicha tartiblaydi va
+> voronka aralashib ketadi. `stage_sort` ustuni aynan shuning uchun mart'da bor.
+
+**4. Yig'ish:** `+ New → Dashboard` → o'ngdagi **+** orqali uchala savolni qo'shing
+→ o'lchamini sozlab **Save**.
+
+**5. Matn kartochkasi** (tahrirlash rejimida `+ → Text`) — buni albatta qo'shing:
+
+> ⚠️ Baza 2026-07-22 da import qilingan. Bitim summasi (`price`) hech qachon
+> to'ldirilmagan — barchasida 0. Tizimda bitta menejer bor. Bitimlar bosqichlar
+> bo'ylab hech qachon ko'chmagan, shuning uchun "bosqich taqsimoti" sotuv
+> konversiyasi emas, importning holati.
+
+Kontekstsiz grafik — chalg'ituvchi grafik. Jamoa raqamlarni noto'g'ri o'qimasligi
+uchun bu izoh dashboard'ning o'zida turishi kerak.
+
+**SQL bilan ham bo'ladi:** `+ New → SQL query` — ko'p hollarda GUI'dan tezroq.
+
+```sql
+select created_month, lead_count, cumulative_count
+from marts.mart_leads_monthly
+order by created_month
+```
+
+**Jadvallar ko'rinmasa:** Admin → Databases → Sync database schema now. Metabase
+sxemani vaqti-vaqti skanerlaydi, yangi dbt modeli darhol chiqmasligi mumkin.
+
+### Zaxira (backup)
+
+Dashboardlar git'da emas, `metabase-db-data` volume'ida saqlanadi:
+
+```bash
+docker run --rm -v etl_metabase-db-data:/data -v "$PWD":/backup alpine \
+  tar czf /backup/metabase-backup.tar.gz -C /data .
+```
+
+---
+
 ## Loyiha tuzilishi
 
 ```
@@ -173,11 +273,13 @@ dlt_pipeline/            # amoCRM'dan olish (dlt)
     runner.py    # ishga tushirish yadrosi + etl_run_log
   pipeline.py    # qo'lda ishga tushirish nuqtasi
   requirements.txt
-dbt_project/             # tozalash/transformatsiya (dbt) — hozircha bo'sh skelet
-  models/{staging,intermediate,marts}/
+dbt_project/             # tozalash/transformatsiya (dbt) — star schema
+  models/staging/  # xom jadvallarning 1:1 tarjimasi (view)
+  models/marts/    # fct_leads, dim_managers, dim_stages, mart_leads_*
+  tests/           # qo'lda yozilgan testlar
 dags/
-  amocrm_dag.py    # Airflow jadvali (har 15 daqiqa)
-docker/, docker-compose.yaml   # Airflow konteynerlari
+  amocrm_dag.py    # Airflow jadvali (har 15 daqiqa) + oxirida dbt_build
+docker/, docker-compose.yaml   # Airflow + Metabase konteynerlari
 ```
 
 Config fayllar (`auth.json`, `postgres_config.json`) repo ildizida turadi.
