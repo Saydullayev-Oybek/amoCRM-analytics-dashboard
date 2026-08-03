@@ -27,3 +27,6 @@ dbt_project/target/
 dbt_project/dbt_packages/
 dbt_project/logs/
 dbt_project/.user.yml
+
+# Design spec'lar — ichida biznes ma'lumot bor, ochiq repo'ga chiqmaydi
+docs/superpowers/

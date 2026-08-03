@@ -105,5 +105,4 @@ docker compose exec analytics-db psql -U postgres -d amocrm
 
 ## Batafsil
 
-- Texnik tafsilotlar: [CLAUDE.md](CLAUDE.md)
-- Arxitektura qarorlari: [docs/superpowers/specs/](docs/superpowers/specs/)
+Texnik tafsilotlar: [CLAUDE.md](CLAUDE.md)
