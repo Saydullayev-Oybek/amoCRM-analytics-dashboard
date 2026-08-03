@@ -75,12 +75,22 @@ with DAG(
     # ishlaydi va test yiqilsa undan keyingi modellar QURILMAYDI (run+test alohida
     # bo'lganda buzuq fct ustiga mart baribir qurilib ketardi).
     # --target docker → profiles.yml'dagi analytics-db:5432 ulanishi (localhost emas).
+    #
+    # profiles.yml .gitignore'da — `git clone` bilan kelmaydi. U bo'lmasa dbt
+    # "Could not find profile named 'amocrm'" deb yiqiladi, va bu xato foydalanuvchiga
+    # QAYSI fayl yetishmayotganini aytmaydi. Shuning uchun namunadan o'zimiz
+    # yaratamiz: namunada Docker uchun tayyor qiymatlar bor, sir yo'q
+    # (parol docker-compose.yaml'ning o'zida ham ochiq turibdi).
     dbt_build = BashOperator(
         task_id="dbt_build",                             # UI'da: dbt_build
-        bash_command=(
-            "cd /opt/airflow/dbt_project && "
-            "dbt build --target docker --no-use-colors"
-        ),
+        bash_command="""
+            cd /opt/airflow/dbt_project
+            if [ ! -f profiles.yml ]; then
+                echo "profiles.yml topilmadi — profiles.yml.example dan yaratilmoqda"
+                cp profiles.yml.example profiles.yml
+            fi
+            dbt build --target docker --no-use-colors
+        """,
     )
 
     if previous_task is not None:                        # oxirgi load_* taskidan keyin

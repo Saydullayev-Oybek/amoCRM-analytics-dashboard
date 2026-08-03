@@ -33,7 +33,6 @@ cd amoCRM-analytics-dashboard
 ```bash
 cp auth.json.example auth.json
 cp postgres_config.json.example postgres_config.json
-cp dbt_project/profiles.yml.example dbt_project/profiles.yml
 ```
 
 `auth.json` ga amoCRM ma'lumotingizni yozing:
@@ -45,7 +44,7 @@ cp dbt_project/profiles.yml.example dbt_project/profiles.yml
 }
 ```
 
-Qolgan ikkitasi tayyor — tegmasangiz ham bo'ladi.
+`postgres_config.json` tayyor — tegmasangiz ham bo'ladi.
 
 > ⚠️ Bu qadamni keyingisidan **oldin** bajaring. Fayllar bo'lmasa Docker ularning
 > o'rniga papka yaratib qo'yadi va konteyner ishga tushmaydi.
