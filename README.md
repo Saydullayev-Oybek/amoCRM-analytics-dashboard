@@ -199,57 +199,20 @@ docker compose exec analytics-db psql -U postgres -d amocrm -c "
   alter user metabase_ro with password 'yangi-parol';"
 ```
 
-### Dashboard qanday yasaladi
+### Qaysi jadvaldan nima chiqadi
 
-Metabase'da mantiq: avval **Question** (bitta grafik), keyin ularni **Dashboard**ga
-yig'asiz.
+| Ko'rsatkich | Manba jadval |
+|---|---|
+| Jami bitimlar | `marts.fct_leads` |
+| Oylik dinamika + kumulyativ o'sish | `marts.mart_leads_monthly` |
+| Bosqich bo'yicha taqsimot | `marts.mart_leads_by_stage` |
 
-**1. Jami bitimlar (raqam)**
+> ⚠️ **Raqamlarni to'g'ri o'qish uchun:** baza 2026-07-22 da import qilingan,
+> `price` hech qachon to'ldirilmagan (barcha bitimda 0), bitta menejer bor, va
+> bitimlar bosqichlar bo'ylab hech qachon ko'chmagan — "bosqich taqsimoti" sotuv
+> konversiyasi **emas**, importning holati.
 
-`+ New → Question → Raw data → Marts → Fct Leads` → **Summarize: Count of rows**
-→ vizualizatsiya **Number** → Save.
-
-**2. Oylik dinamika (chiziq)**
-
-`+ New → Question → Marts → Mart Leads Monthly` → vizualizatsiya **Line**
-(X: `Created Month`, Y: `Lead Count`) → `Add series` bilan `Cumulative Count`
-qo'shiladi → Save.
-
-> Bu jadval **allaqachon oy bo'yicha yig'ilgan** — Summarize qo'shmang, aks holda
-> raqamlar ikki marta yig'iladi.
-
-**3. Bosqich bo'yicha taqsimot (ustun)**
-
-`+ New → Question → Marts → Mart Leads By Stage` → vizualizatsiya **Bar**
-(X: `Stage Name`, Y: `Lead Count`) → Save.
-
-> ⚠️ Notebook editorda **Sort → `Stage Sort` ascending** qadamini qo'shing.
-> Aks holda Metabase ustunlarni alifbo yoki kattalik bo'yicha tartiblaydi va
-> voronka aralashib ketadi. `stage_sort` ustuni aynan shuning uchun mart'da bor.
-
-**4. Yig'ish:** `+ New → Dashboard` → o'ngdagi **+** orqali uchala savolni qo'shing
-→ o'lchamini sozlab **Save**.
-
-**5. Matn kartochkasi** (tahrirlash rejimida `+ → Text`) — buni albatta qo'shing:
-
-> ⚠️ Baza 2026-07-22 da import qilingan. Bitim summasi (`price`) hech qachon
-> to'ldirilmagan — barchasida 0. Tizimda bitta menejer bor. Bitimlar bosqichlar
-> bo'ylab hech qachon ko'chmagan, shuning uchun "bosqich taqsimoti" sotuv
-> konversiyasi emas, importning holati.
-
-Kontekstsiz grafik — chalg'ituvchi grafik. Jamoa raqamlarni noto'g'ri o'qimasligi
-uchun bu izoh dashboard'ning o'zida turishi kerak.
-
-**SQL bilan ham bo'ladi:** `+ New → SQL query` — ko'p hollarda GUI'dan tezroq.
-
-```sql
-select created_month, lead_count, cumulative_count
-from marts.mart_leads_monthly
-order by created_month
-```
-
-**Jadvallar ko'rinmasa:** Admin → Databases → Sync database schema now. Metabase
-sxemani vaqti-vaqti skanerlaydi, yangi dbt modeli darhol chiqmasligi mumkin.
+**Jadvallar Metabase'da ko'rinmasa:** Admin → Databases → Sync database schema now.
 
 ### Zaxira (backup)
 
