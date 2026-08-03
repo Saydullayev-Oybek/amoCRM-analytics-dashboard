@@ -11,7 +11,7 @@ amocrm:
       host: localhost
       port: 5433
       user: postgres
-      password: your-postgres-password
+      password: admin # docker-compose.yaml'dagi analytics-db paroli
       dbname: amocrm
       schema: analytics
       threads: 4
@@ -21,7 +21,7 @@ amocrm:
       host: analytics-db
       port: 5432
       user: postgres
-      password: your-postgres-password
+      password: admin # docker-compose.yaml'dagi analytics-db paroli
       dbname: amocrm
       schema: analytics
       threads: 4

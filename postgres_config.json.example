@@ -1,8 +1,8 @@
 {
-  "host": "localhost",
+  "host": "analytics-db",
   "port": 5432,
   "database": "amocrm",
   "username": "postgres",
-  "password": "your-postgres-password",
-  "schema": "amocrm"
+  "password": "admin",
+  "schema": "raw_data"
 }

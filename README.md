@@ -1,34 +1,89 @@
-# amoCRM → PostgreSQL ETL
+# amoCRM analitika pipeline
 
-amoCRM (Kommo) dan ma'lumotni olib, **PostgreSQL** bazasiga yuklaydigan pipeline.
-[dlt](https://dlthub.com) kutubxonasi ustiga qurilgan.
+amoCRM (Kommo) dan ma'lumotni olib, tozalab, brauzerda ko'rsatadigan to'liq
+analitika quvuri. Hammasi Docker ichida ishlaydi — bitta buyruq bilan ko'tariladi.
 
-**Nima qiladi:**
-- amoCRM'dagi leadlar, kontaktlar, kompaniyalar, vazifalar va boshqalarni tortadi.
-- Ularni PostgreSQL'ga **xom (JSON) holda** yuklaydi (tozalash/transformatsiya keyin — dbt bosqichida).
-- Birinchi marta hammasini, keyin esa **faqat o'zgarganini** yuklaydi.
+## Loyiha haqida
+
+Uchta qatlamdan iborat:
+
+```
+amoCRM API
+    │
+    ▼  ①  EL  — dlt
+raw_data schema          xom JSON, hech narsa o'zgartirilmaydi
+    │
+    ▼  ②  T   — dbt
+staging + marts          tozalangan, star schema (fakt + o'lchovlar)
+    │
+    ▼  ③  BI  — Metabase
+dashboard                brauzerda, jamoa ko'radi
+```
+
+**① EL — ma'lumotni olish ([dlt](https://dlthub.com))**
+amoCRM'dan 11 ta jadval tortiladi va PostgreSQL'ga **xom holda** yoziladi. Birinchi
+run'da hammasi, keyin esa **faqat o'zgargani**. Hech qanday transformatsiya yo'q —
+bu ataylab, chunki xom nusxa saqlanib qolsa, keyinchalik mantiqni o'zgartirib
+qayta hisoblash mumkin.
+
+**② T — transformatsiya ([dbt](https://getdbt.com))**
+Xom jadvallar ustidan star schema quriladi: `fct_leads` (fakt) + `dim_managers`,
+`dim_stages` (o'lchovlar), ustiga tayyor hisobotlar — `mart_leads_monthly`,
+`mart_leads_by_stage`. 32 ta avtomatik test har run'da tekshiradi.
+
+**③ BI — ko'rish (Metabase)**
+Marts ustida brauzerdan ochiladigan dashboard. Jamoa ichki tarmoqdan kiradi.
+
+**Orkestratsiya (Airflow)** — har 15 daqiqada: 11 ta jadval ketma-ket yuklanadi,
+so'ng `dbt build` ishlaydi. Har jadval alohida task, ya'ni qaysi biri yiqilgani
+UI'da darhol ko'rinadi.
+
+**Ko'tarilgandan keyin nima olasiz:**
+
+| Manzil | Nima |
+|---|---|
+| http://localhost:8080 | Airflow — pipeline holati (`admin` / `admin`) |
+| http://localhost:3000 | Metabase — dashboard |
+| `localhost:5433` | PostgreSQL — DBeaver/psql bilan ulanish uchun |
 
 ---
 
-## 1. Talablar
+## Ishga tushirish (Docker)
 
-- Python **3.12 yoki 3.13** (3.14 hali qo'llab-quvvatlanmaydi)
-- Ishlaydigan PostgreSQL baza
-- amoCRM access token
+Python o'rnatish, virtual muhit yaratish shart emas — hammasi konteynerlar ichida.
 
-## 2. O'rnatish
+### 0. Kerakli narsalar
+
+- **Docker Desktop** (yoki Docker Engine + Compose)
+- **git**
+- amoCRM access token va subdomen
+
+### 1. Loyihani olish
 
 ```bash
-# virtual muhit yaratish va paketlarni o'rnatish
-uv venv --python 3.13 .venv
-uv pip install --python .venv/bin/python -r dlt_pipeline/requirements.txt
+git clone https://github.com/Saydullayev-Oybek/amoCRM-analytics-dashboard
+cd amoCRM-analytics-dashboard
 ```
 
-## 3. Sozlash
+### 2. Uchta config fayl
 
-Ikkita config fayl yaratasiz (ikkalasi ham `.gitignore`'da — Git'ga tushmaydi).
+Bu fayllar `.gitignore`'da — sir bo'lgani uchun clone bilan **kelmaydi**, o'zingiz
+yaratasiz:
 
-**`auth.json`** — amoCRM ulanishi (`auth.json.example`dan nusxa oling):
+```bash
+cp auth.json.example auth.json
+cp postgres_config.json.example postgres_config.json
+cp dbt_project/profiles.yml.example dbt_project/profiles.yml
+```
+
+> ⚠️ **Buni `docker compose up` dan OLDIN qiling.** `auth.json` va
+> `postgres_config.json` compose'da **fayl** sifatida mount qilingan. Fayl mavjud
+> bo'lmasa, Docker o'sha nomda **papka** yaratib qo'yadi va konteyner ishga
+> tushmaydi. Bu eng ko'p uchraydigan xato.
+
+Endi ichini to'ldiring:
+
+**`auth.json`** — amoCRM kaliti:
 
 ```json
 {
@@ -36,32 +91,75 @@ Ikkita config fayl yaratasiz (ikkalasi ham `.gitignore`'da — Git'ga tushmaydi)
   "access_token": "sizning-tokeningiz"
 }
 ```
+
 > `subdomain` — `https://SUBDOMEN.amocrm.ru` dagi qism.
 
-**`postgres_config.json`** — baza ulanishi (`postgres_config.example.json`dan nusxa oling):
+**`postgres_config.json`** — Docker uchun tayyor, faqat parolni tekshiring:
 
 ```json
 {
-  "host": "localhost",
+  "host": "analytics-db",
   "port": 5432,
   "database": "amocrm",
   "username": "postgres",
-  "password": "parolingiz",
-  "schema": "amocrm"
+  "password": "admin",
+  "schema": "raw_data"
 }
 ```
-> `schema` — jadvallar yaratiladigan schema nomi.
 
-## 4. Ishga tushirish
+> `host` — `localhost` **emas**, `analytics-db`. Pipeline konteyner ichida
+> ishlaydi, u bazani compose tarmog'idagi nomi orqali ko'radi.
+
+**`dbt_project/profiles.yml`** — parollar `postgres_config.json` bilan bir xil
+bo'lsin. Ikkita target bor: `dev` (host'dan) va `docker` (Airflow ichidan) —
+namunada ikkalasi ham tayyor.
+
+### 3. Ko'tarish
 
 ```bash
-./.venv/bin/python dlt_pipeline/pipeline.py
+docker compose up -d --build
 ```
 
-- **Birinchi run** — hamma ma'lumot tortiladi (to'liq).
-- **Keyingi run'lar** — faqat yangi yoki o'zgargan yozuvlar.
+Birinchi marta 5–10 daqiqa (image build + Metabase yuklab olinadi). Holatni
+ko'rish:
 
-Har run oxirida qaysi jadvalga nechta yozuv yuklangani ko'rinadi.
+```bash
+docker compose ps        # hammasi "healthy" bo'lishi kerak
+```
+
+### 4. Pipeline'ni yoqish
+
+http://localhost:8080 → login `admin` / `admin` → `amocrm_etl` DAG'ini toping va
+chapdagi tugma bilan **yoqing**.
+
+Sukut bo'yicha u pauzada turadi (`DAGS_ARE_PAUSED_AT_CREATION`), shuning uchun bu
+qadam shart. Yoqilgandan keyin har 15 daqiqada o'zi ishlaydi. Darhol sinash uchun
+**Trigger DAG** tugmasini bosing.
+
+Birinchi run uzoq davom etadi — butun amoCRM tarixini tortadi.
+
+### 5. Dashboard
+
+http://localhost:3000 → admin akkaunt yarating → bazani ulang:
+
+| Maydon | Qiymat |
+|---|---|
+| Host | `analytics-db` |
+| Port | `5432` |
+| Database | `amocrm` |
+| Username | `metabase_ro` |
+| Password | `metabase_ro_2026` |
+
+`metabase_ro` — **faqat-o'qish** roli, baza birinchi ko'tarilganda
+[docker/init-analytics-db.sql](docker/init-analytics-db.sql) uni avtomatik
+yaratadi. Qo'lda SQL yozish kerak emas.
+
+### To'xtatish
+
+```bash
+docker compose down          # to'xtatish (ma'lumot saqlanib qoladi)
+docker compose down -v       # ma'lumot bilan BIRGA o'chirish (ehtiyot bo'ling)
+```
 
 ---
 
@@ -91,26 +189,23 @@ ichki jadvallar ham yaratadi (`_dlt_*`) — bularga tegmang.
 
 ---
 
-## Avtomatlashtirish (Airflow + Docker)
+## Avtomatlashtirish (Airflow)
 
-Pipeline'ni **har 15 daqiqada avtomatik** ishlatish va har bir jadvalni
-alohida kuzatish uchun Airflow sozlangan.
+DAG `amocrm_etl` har **15 daqiqada** ishlaydi: 11 ta jadval **ketma-ket**
+yuklanadi, so'ng oxirida `dbt_build` taski marts'ni qayta quradi.
 
-```bash
-docker compose up -d --build     # ishga tushirish
-docker compose down              # to'xtatish
-```
-
-- **UI:** http://localhost:8080 (login: `admin`, parol: `admin`)
-- `amocrm_etl` degan DAG'ni topib **yoqing** — keyin har 15 daqiqada o'zi ishlaydi.
-- Qo'lda sinash uchun "Trigger DAG" tugmasini bosing.
+Ketma-ket — parallel emas: dlt state'i buzilmasligi va amoCRM'ning 7 so'rov/soniya
+chegarasi hurmat qilinishi uchun.
 
 **Kuzatuv:**
+
 - Har jadval alohida task (`load_leads`, `load_contacts`, ...). UI'da qaysi biri
   ishladi (yashil) yoki xato berdi (qizil) — darrov ko'rinadi.
+- `dbt_build` zanjirning oxirida. Bitta jadval yuklanmasa u umuman ishlamaydi —
+  ya'ni marts yarim ma'lumot ustiga qurilmaydi.
 - Har run natijasi bazadagi `etl_run_log` jadvaliga ham yoziladi:
   ```sql
-  SELECT * FROM public.etl_run_log ORDER BY logged_at DESC;
+  select * from raw_data.etl_run_log order by logged_at desc;
   ```
   Bu yerda qaysi jadval nechta yozuv yuklagani va nima xato bergani ko'rinadi.
 
@@ -152,13 +247,13 @@ Hamma ma'lumotni noldan qayta yuklamoqchi bo'lsangiz:
   Shu run'da har jadval tashlanib, noldan yuklanadi. Keyingi oddiy runlar yana
   incremental bo'ladi.
 
-- **CLI'da:**
+- **Qo'lda (to'liq tozalash):** bazadagi schema'ni tashlab, dlt state'ini o'chiring:
   ```bash
-  AMOCRM_FULL_REFRESH=1 ./.venv/bin/python dlt_pipeline/pipeline.py
+  docker compose exec analytics-db psql -U postgres -d amocrm \
+    -c "drop schema raw_data cascade;"
+  rm -rf dlt_data/pipelines/amocrm
   ```
-
-- **Qo'lda (to'liq tozalash):** bazani `DROP SCHEMA public CASCADE; CREATE SCHEMA public;`
-  qilib, `rm -rf dlt_data/pipelines/amocrm` bilan state'ni o'chirib, keyin ishga tushiring.
+  Keyin DAG'ni ishga tushiring.
 
 ---
 
@@ -263,10 +358,25 @@ Tezlashtirish uchun amoCRM qo'llab-quvvatlash xizmatidan uni yoqishni so'rang.
 
 ## Foydali buyruqlar
 
-```bash
-# oxirgi yuklash / dlt holatini ko'rish
-./.venv/bin/dlt pipeline amocrm info
+Hammasi Docker orqali — host'ga hech narsa o'rnatish shart emas.
 
-# Airflow scheduler loglarini kuzatish
-docker compose logs -f airflow-scheduler
+```bash
+# holat
+docker compose ps
+docker compose logs -f airflow-scheduler     # pipeline loglari
+docker compose logs -f metabase              # dashboard loglari
+
+# bazaga ulanish (host'da psql bo'lmasa ham ishlaydi)
+docker compose exec analytics-db psql -U postgres -d amocrm
+
+# marts'ni qo'lda qayta qurish (DAG'ni kutmasdan)
+docker compose exec airflow-scheduler \
+  bash -c "cd /opt/airflow/dbt_project && dbt build --target docker"
+
+# qaysi jadval qachon va nechta yozuv yuklagani
+docker compose exec analytics-db psql -U postgres -d amocrm \
+  -c "select * from raw_data.etl_run_log order by logged_at desc limit 20;"
+
+# qayta ishga tushirish (kod o'zgargandan keyin)
+docker compose up -d --build
 ```

@@ -21,7 +21,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     # ▶ Trigger bosganda config formasi doim chiqsin (DAG'da params bo'lmasa ham) —
-    # {"full_refresh": true} yuborish uchun.
+    # {"full_refresh": true} yuborish uchun
     AIRFLOW__WEBSERVER__SHOW_TRIGGER_FORM_IF_NO_PARAMS: "true"
     # Bizning ETL uchun kerakli env:
     PYTHONPATH: /opt/airflow/project          # amocrm paketini import qilish uchun
@@ -68,6 +68,9 @@ services:
       - "5433:5432"                 # host'dan: localhost:5433 (Power BI, DBeaver, psql)
     volumes:
       - analytics-db-data:/var/lib/postgresql/data   # ma'lumot shu volume'da saqlanadi
+      # Baza BIRINCHI marta yaratilganda metabase_ro (faqat-o'qish) rolini quradi.
+      # Mavjud volume'da ishlamaydi — u yerda rol qo'lda yaratilgan.
+      - ./docker/init-analytics-db.sql:/docker-entrypoint-initdb.d/10-metabase-ro.sql:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres", "-d", "amocrm"]
       interval: 10s
