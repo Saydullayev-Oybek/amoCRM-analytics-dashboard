@@ -10,6 +10,9 @@ my_env/
 __pycache__/
 *.pyc
 
+# macOS
+.DS_Store
+
 # Local data dumps
 *_test.json
 leads_test.json
